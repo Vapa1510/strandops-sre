@@ -20,14 +20,21 @@ def main() -> None:
         print("[ERROR] 'rich' is required. Run: pip install rich")
         sys.exit(1)
 
-    from strandops.agent import create_sre_agent
+    from strandops.agent import create_sre_agent, get_provider_info
 
     console = Console()
+    info = get_provider_info()
+
+    status_color = "green" if info["has_credentials"] else "yellow"
 
     console.print(Panel(
         Text.from_markup(
             "[bold red]🛡️  STRANDSOPS — AUTONOMOUS CLOUD SRE CONSOLE[/bold red]\n"
-            "[dim]Powered by Strands Agents SDK & AWS[/dim]\n\n"
+            "[dim]Powered by Strands Agents SDK & Amazon Bedrock (AWS)[/dim]\n\n"
+            f"[bold cyan]☁️  AWS Cloud Service:[/bold cyan] Amazon Bedrock\n"
+            f"[bold cyan]🤖 Bedrock Model:[/bold cyan] [white]{info['model_id']}[/white]\n"
+            f"[bold cyan]📍 AWS Region:[/bold cyan] [white]{info['region']}[/white]\n"
+            f"[bold cyan]🔑 Bedrock Status:[/bold cyan] [{status_color}]{info['status']}[/{status_color}]\n\n"
             "[bold white]Available Commands:[/bold white]\n"
             "• [cyan]chaos 1[/cyan] : Inject SQS Poison-Pill Storm\n"
             "• [cyan]chaos 2[/cyan] : Inject Payment Gateway Memory Leak (OOM)\n"

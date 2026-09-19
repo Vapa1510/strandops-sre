@@ -49,6 +49,22 @@ Be clear, concise, and structured. Use emoji indicators for clarity:
 """
 
 
+def get_provider_info() -> dict:
+    """Return active model provider configuration and AWS Bedrock status."""
+    provider = os.getenv("MODEL_PROVIDER", "bedrock").lower()
+    model_id = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20240620-v1:0")
+    region = os.getenv("AWS_REGION", "us-east-1")
+    has_keys = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
+    
+    return {
+        "provider": provider,
+        "model_id": model_id,
+        "region": region,
+        "has_credentials": has_keys,
+        "status": "Connected (Amazon Bedrock Active)" if has_keys else "AWS Bedrock Configured (Awaiting Keys)",
+    }
+
+
 def _build_model():
     """Configure the LLM provider.
 
@@ -87,13 +103,31 @@ def _build_model():
 
     else:  # Default: Amazon Bedrock (Primary choice for the hackathon)
         try:
+            import boto3
             from strands.models.bedrock import BedrockModel
+
             model_id = os.getenv(
                 "BEDROCK_MODEL_ID",
                 "us.anthropic.claude-3-5-sonnet-20240620-v1:0"
             )
             region = os.getenv("AWS_REGION", "us-east-1")
-            return BedrockModel(model_id=model_id, region_name=region)
+            
+            # Use explicit credentials if present in environment
+            access_key = os.getenv("AWS_ACCESS_KEY_ID")
+            secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+            session_token = os.getenv("AWS_SESSION_TOKEN")
+
+            if access_key and secret_key:
+                session = boto3.Session(
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    aws_session_token=session_token,
+                    region_name=region,
+                )
+                return BedrockModel(boto_session=session, model_id=model_id)
+            else:
+                return BedrockModel(model_id=model_id, region_name=region)
+
         except Exception as e:
             print(f"[INFO] Bedrock initialization note: {e}. Set AWS credentials in .env to use Bedrock.")
             return None

@@ -6,10 +6,14 @@ from __future__ import annotations
 
 import os
 import sys
-import pandas as pd
 
 # Add src to pythonpath
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 try:
     import streamlit as st
@@ -20,7 +24,7 @@ except ImportError:
 
 from strandops.simulator.cloud import cloud
 from strandops.simulator.models import ChaosScenario
-from strandops.agent import create_sre_agent
+from strandops.agent import create_sre_agent, get_provider_info
 
 
 st.set_page_config(
@@ -41,7 +45,7 @@ def get_agent():
 col_header, col_status = st.columns([3, 1])
 with col_header:
     st.title("🛡️ StrandsOps — Incident Command Center")
-    st.caption("Autonomous Cloud SRE & Self-Healing Agent powered by Strands Agents SDK & AWS")
+    st.caption("Autonomous Cloud SRE & Self-Healing Agent powered by **Strands Agents SDK** & **Amazon Bedrock** (AWS)")
 
 with col_status:
     inc = cloud.active_incident
@@ -50,8 +54,30 @@ with col_status:
     else:
         st.success("🟢 **ALL SYSTEMS OPERATIONAL**\n\nOperating within green SLA parameters")
 
-# Left Sidebar: Chaos Injection & Cluster Topology
+# Left Sidebar: AWS Cloud Services, Chaos Lab & Cluster Topology
 with st.sidebar:
+    st.header("☁️ AWS Cloud Services")
+    info = get_provider_info()
+    if info["has_credentials"]:
+        st.success(f"🟢 **Amazon Bedrock: Active**\n\nModel: `{info['model_id']}`\n\nRegion: `{info['region']}`")
+    else:
+        st.info(f"🟡 **Amazon Bedrock: Ready**\n\nModel: `{info['model_id']}`\n\nRegion: `{info['region']}`")
+        with st.expander("🔑 AWS Credentials"):
+            st.caption("Add AWS keys here or edit `.env`:")
+            key_id = st.text_input("AWS Access Key ID", value=os.getenv("AWS_ACCESS_KEY_ID", ""), type="password")
+            secret = st.text_input("AWS Secret Access Key", value=os.getenv("AWS_SECRET_ACCESS_KEY", ""), type="password")
+            region_val = st.text_input("AWS Region", value=info["region"])
+            if st.button("Connect to Live Bedrock", use_container_width=True):
+                if key_id and secret:
+                    os.environ["AWS_ACCESS_KEY_ID"] = key_id
+                    os.environ["AWS_SECRET_ACCESS_KEY"] = secret
+                    os.environ["AWS_REGION"] = region_val
+                    if "agent" in st.session_state:
+                        del st.session_state["agent"]
+                    st.success("Connected to Amazon Bedrock!")
+                    st.rerun()
+
+    st.divider()
     st.header("⚡ Chaos Engineering Lab")
     st.markdown("Inject realistic production incidents to watch the agent triage & heal:")
 
@@ -109,7 +135,7 @@ with col4:
     st.metric("Active Incident", inc.incident_id if inc and inc.status == "OPEN" else "None", delta="SEV1" if inc and inc.status == "OPEN" else "Stable")
 
 # Live SLA Chart
-df = pd.DataFrame([
+chart_data = [
     {
         "Service": t.service_name,
         "P99 Latency (ms)": t.p99_latency_ms,
@@ -117,7 +143,8 @@ df = pd.DataFrame([
         "Memory (MB)": t.memory_usage_mb,
     }
     for t in telemetry
-])
+]
+df = pd.DataFrame(chart_data) if pd is not None else chart_data
 
 fig = px.bar(
     df,
@@ -187,7 +214,7 @@ with tab_postmortem:
 with tab_logs:
     st.subheader("Raw CloudWatch / Microservice Structured Logs")
     logs = cloud.get_logs(limit=25)
-    log_df = pd.DataFrame([
+    log_records = [
         {
             "Timestamp": l.timestamp[11:19],
             "Level": l.level.value,
@@ -196,5 +223,6 @@ with tab_logs:
             "Error Type": l.error_type or "-",
         }
         for l in logs
-    ])
-    st.dataframe(log_df, use_container_width=True)
+    ]
+    log_display = pd.DataFrame(log_records) if pd is not None else log_records
+    st.dataframe(log_display, use_container_width=True)
