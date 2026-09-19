@@ -95,7 +95,7 @@ StrandsOps is built on four core engineering principles:
 * **Agent Boundaries:** Giving an agent fewer, well-typed tools makes it 10x more reliable than giving it broad, ambiguous tools.
 
 ### 4. The Execution
-* **12/12 Automated Tests Passing in 0.91s:** Unit and integration tests cover every tool, failure mode, and recovery cycle.
+* **17/17 Automated Tests Passing:** Unit and integration tests cover every tool, failure mode, and recovery cycle.
 * **One-Click Reproducible Demos:** One click in the UI simulates a real outage, and the agent fixes it live in under 30 seconds.
 
 ---

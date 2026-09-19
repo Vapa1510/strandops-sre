@@ -200,3 +200,45 @@ def test_sre_tools_registry():
     assert len(SRE_TOOLS) == 7
     for tool_fn in SRE_TOOLS:
         assert callable(tool_fn)
+
+
+# =============================================================================
+# 4. Safety Gate & Postmortem Enhancement Tests
+# =============================================================================
+
+def test_blast_radius_blocks_unknown_actions():
+    """Unknown action types should be flagged HIGH risk and blocked."""
+    raw = analyze_blast_radius(proposed_action="delete_database", target_service="order-service")
+    data = json.loads(raw)
+    assert data["risk_level"] == "HIGH"
+    assert data["safe_to_proceed"] is False
+    assert "Unknown action" in data["safety_rationale"][0]
+
+
+def test_blast_radius_returns_metadata():
+    """Safety gate should return dependent count and blast limit threshold."""
+    raw = analyze_blast_radius(proposed_action="restart_service", target_service="payment-gateway")
+    data = json.loads(raw)
+    assert "dependent_count" in data
+    assert "blast_limit_threshold" in data
+    assert data["dependent_count"] == len(data["direct_dependents"])
+
+
+def test_postmortem_oom_scenario_has_correct_rca():
+    """Postmortem for OOM scenario should mention connection pool, not JSON payloads."""
+    cloud.inject_chaos(ChaosScenario.MEMORY_LEAK_OOM)
+    cloud.restart_service_instance("payment-gateway")  # resolve it
+    pm_data = json.loads(generate_incident_postmortem())
+    report = pm_data["markdown_report"]
+    assert "connection pool" in report.lower()
+    assert "corrupted message payloads" not in report.lower()
+
+
+def test_postmortem_rate_limit_scenario_has_correct_rca():
+    """Postmortem for rate-limit scenario should mention deployment misconfiguration."""
+    cloud.inject_chaos(ChaosScenario.RATE_LIMIT_MISCONFIG)
+    cloud.rollback_service_config("api-gateway")  # resolve it
+    pm_data = json.loads(generate_incident_postmortem())
+    report = pm_data["markdown_report"]
+    assert "rate limiter" in report.lower() or "429" in report
+    assert "corrupted message payloads" not in report.lower()

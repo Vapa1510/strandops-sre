@@ -154,7 +154,7 @@ fig = px.bar(
     title="Service Telemetry vs SLA Thresholds (Latency SLA: 120ms | Error Rate SLA: 1.0%)",
     height=280,
 )
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True, key="telemetry_chart")
 
 # Main Workspace Tabs
 tab_chat, tab_postmortem, tab_logs = st.tabs(["🤖 Autonomous SRE Console", "📄 Incident Postmortems", "📜 Live Log Stream"])
@@ -206,10 +206,17 @@ with tab_chat:
 with tab_postmortem:
     st.subheader("Automated Incident Postmortem Reports")
     from strandops.tools.postmortem import generate_incident_postmortem
-    pm_raw = generate_incident_postmortem()
-    import json
-    pm_data = json.loads(pm_raw)
-    st.markdown(pm_data.get("markdown_report", "No postmortem available."))
+    import json as _json
+
+    if st.button("📄 Generate Postmortem for Current Incident", use_container_width=True):
+        pm_raw = generate_incident_postmortem()
+        pm_data = _json.loads(pm_raw)
+        st.session_state["last_postmortem"] = pm_data.get("markdown_report", "No postmortem available.")
+
+    if "last_postmortem" in st.session_state:
+        st.markdown(st.session_state["last_postmortem"])
+    else:
+        st.info("No postmortem generated yet. Resolve an incident first, then click the button above.")
 
 with tab_logs:
     st.subheader("Raw CloudWatch / Microservice Structured Logs")

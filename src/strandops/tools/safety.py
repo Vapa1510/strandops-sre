@@ -6,6 +6,7 @@ to prevent cascading failures across the microservice topology.
 from __future__ import annotations
 
 import json
+import os
 from strands import tool
 from strandops.simulator.cloud import cloud
 
@@ -29,6 +30,10 @@ def analyze_blast_radius(proposed_action: str, target_service: str) -> str:
     # Find services that depend directly on this target
     dependents = [svc for svc, deps in topology.items() if target in deps]
 
+    # Safety threshold from config — how many downstream dependents we allow
+    # before requiring human approval
+    blast_limit = int(os.getenv("AUTO_REMEDIATE_BLAST_LIMIT", "2"))
+
     # Evaluate action safety
     action = proposed_action.strip().lower()
     safe_to_proceed = True
@@ -48,7 +53,13 @@ def analyze_blast_radius(proposed_action: str, target_service: str) -> str:
         elif target == "order-service":
             risk_level = "HIGH"
             rationale.append("Order service is the central commerce engine. Restarting will temporarily interrupt checkout API.")
-            safe_to_proceed = True  # Allowed if sev1, but with caution
+            rationale.append(f"Blast radius: {len(dependents)} direct dependent(s) ({', '.join(dependents) or 'none'}).")
+            # Only auto-approve if dependents are within the configurable safety limit
+            safe_to_proceed = len(dependents) <= blast_limit
+            if not safe_to_proceed:
+                rationale.append(f"⚠️ BLOCKED: {len(dependents)} dependents exceed auto-remediate limit ({blast_limit}). Requires human approval.")
+            else:
+                rationale.append(f"Auto-approved: {len(dependents)} dependent(s) within safety threshold ({blast_limit}).")
         else:
             risk_level = "LOW"
             rationale.append(f"Standard container reboot on {target}.")
@@ -57,15 +68,31 @@ def analyze_blast_radius(proposed_action: str, target_service: str) -> str:
         risk_level = "LOW"
         rationale.append(f"Rolling back configuration on {target} reverts bad rate limit parameters to tested stable baseline.")
 
+    elif "drain" in action:
+        risk_level = "MEDIUM"
+        rationale.append(f"Draining traffic from {target} will redirect requests to other instances.")
+        rationale.append(f"Upstream callers ({', '.join(dependents) or 'none'}) may see brief latency increase during failover.")
+
+    else:
+        # Unknown action — default to HIGH risk and block
+        risk_level = "HIGH"
+        safe_to_proceed = False
+        rationale.append(f"Unknown action '{proposed_action}'. Cannot assess blast radius for unrecognized operations.")
+        rationale.append("Manual review required before execution.")
+
     assessment = {
         "target": target,
         "proposed_action": proposed_action,
         "direct_dependents": dependents,
+        "dependent_count": len(dependents),
+        "blast_limit_threshold": blast_limit,
         "risk_level": risk_level,
         "safe_to_proceed": safe_to_proceed,
         "safety_rationale": rationale,
         "recommended_precaution": (
-            "Ensure traffic retries are enabled on upstream callers."
+            "⚠️ Requires human approval — blast radius exceeds safety threshold."
+            if not safe_to_proceed
+            else "Ensure traffic retries are enabled on upstream callers."
             if risk_level in ("MEDIUM", "HIGH")
             else "Proceed with standard execution."
         ),
