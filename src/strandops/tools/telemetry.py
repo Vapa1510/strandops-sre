@@ -22,7 +22,8 @@ def inspect_telemetry(service_name: str = "") -> str:
                       'payment-gateway', 'order-service', 'api-gateway').
                       Omit to inspect all services across the topology.
     """
-    target = service_name.strip() if service_name else None
+    raw = service_name.strip().lower().replace(" ", "-") if service_name else ""
+    target = None if raw in ("", "all", "none", "null") else raw
     snapshots = cloud.get_telemetry(target)
 
     if not snapshots:

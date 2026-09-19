@@ -27,10 +27,16 @@ def execute_remediation(action_type: str, target: str, parameters_json: str = "{
     action = action_type.strip().lower()
     tgt = target.strip()
 
-    try:
-        params = json.loads(parameters_json) if parameters_json else {}
-    except json.JSONDecodeError:
-        params = {}
+    params = {}
+    if parameters_json:
+        try:
+            params = json.loads(parameters_json)
+        except json.JSONDecodeError:
+            try:
+                import ast
+                params = ast.literal_eval(parameters_json)
+            except Exception:
+                params = {}
 
     if action == "quarantine_messages":
         message_ids = params.get("message_ids", [])
