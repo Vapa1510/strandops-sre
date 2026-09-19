@@ -1,0 +1,38 @@
+[project]
+name = "strandops-sre"
+version = "0.1.0"
+description = "Autonomous Cloud SRE & Self-Healing Agent powered by Strands Agents SDK and AWS"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "strands-agents>=0.1",
+    "strands-agents-tools>=0.1",
+    "boto3>=1.34",
+    "pydantic>=2.0",
+    "rich>=13.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+web = [
+    "streamlit>=1.35",
+    "plotly>=5.20",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+openai = ["strands-agents[openai]"]
+anthropic = ["strands-agents[anthropic]"]
+ollama = ["strands-agents[ollama]"]
+
+[project.scripts]
+strandops = "strandops.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,54 @@
+"""Telemetry inspection tool for StrandsOps.
+
+Allows the SRE agent to observe real-time metrics across microservices,
+comparing against SLA benchmarks.
+"""
+from __future__ import annotations
+
+import json
+from strands import tool
+from strandops.simulator.cloud import cloud
+
+
+@tool
+def inspect_telemetry(service_name: str = "") -> str:
+    """Inspect real-time telemetry metrics for microservices and cloud infrastructure.
+
+    Returns latency (P50, P95, P99), error rates, throughput (RPS), and memory
+    consumption. Highlights any metrics exceeding SLA thresholds.
+
+    Args:
+        service_name: Optional name of the service to inspect (e.g. 'inventory-worker',
+                      'payment-gateway', 'order-service', 'api-gateway').
+                      Omit to inspect all services across the topology.
+    """
+    target = service_name.strip() if service_name else None
+    snapshots = cloud.get_telemetry(target)
+
+    if not snapshots:
+        return json.dumps({
+            "status": "error",
+            "message": f"Service '{service_name}' not found. Available: {list(cloud.service_configs.keys())}"
+        })
+
+    report = []
+    for s in snapshots:
+        sla_violation = (s.error_rate_pct > 1.0) or (s.p99_latency_ms > 120.0)
+        report.append({
+            "service": s.service_name,
+            "status": s.status.value,
+            "sla_breached": sla_violation,
+            "p50_latency_ms": s.p50_latency_ms,
+            "p95_latency_ms": s.p95_latency_ms,
+            "p99_latency_ms": s.p99_latency_ms,
+            "error_rate_pct": f"{s.error_rate_pct:.1f}%",
+            "requests_per_sec": s.requests_per_sec,
+            "memory_usage_mb": f"{s.memory_usage_mb:.1f} MB",
+            "cpu_usage_pct": f"{s.cpu_usage_pct:.1f}%",
+        })
+
+    return json.dumps({
+        "timestamp": snapshots[0].timestamp.isoformat(),
+        "services_inspected": len(report),
+        "telemetry": report,
+    }, indent=2)
