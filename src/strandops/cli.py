@@ -5,8 +5,19 @@ Run with: python -m strandops.cli
 from __future__ import annotations
 
 import sys
-from strandops.simulator.cloud import cloud
+from strandops.cloud_backend import cloud
 from strandops.simulator.models import ChaosScenario
+
+
+def _safe_inject(console, scenario: ChaosScenario):
+    try:
+        return cloud.inject_chaos(scenario)
+    except NotImplementedError:
+        console.print(
+            "[yellow]Chaos injection needs CLOUD_BACKEND=simulator. "
+            "Live AWS mode only supports telemetry/remediation tools.[/yellow]"
+        )
+        return None
 
 
 def main() -> None:
@@ -96,25 +107,33 @@ def main() -> None:
             continue
 
         elif cmd == "chaos 1":
-            inc = cloud.inject_chaos(ChaosScenario.SQS_POISON_PILL)
+            inc = _safe_inject(console, ChaosScenario.SQS_POISON_PILL)
+            if not inc:
+                continue
             console.print(f"[bold red]🚨 Injected SQS Poison Pill Storm! (Incident {inc.incident_id})[/bold red]")
             print_status_table()
             user_input = "An SQS poison pill alert was just detected. Investigate the failure, verify safety, execute remediation, and verify recovery."
 
         elif cmd == "chaos 2":
-            inc = cloud.inject_chaos(ChaosScenario.MEMORY_LEAK_OOM)
+            inc = _safe_inject(console, ChaosScenario.MEMORY_LEAK_OOM)
+            if not inc:
+                continue
             console.print(f"[bold red]🚨 Injected Payment Gateway Memory Leak! (Incident {inc.incident_id})[/bold red]")
             print_status_table()
             user_input = "Payment Gateway memory is leaking and latency breached 3000ms. Diagnose and remediate."
 
         elif cmd == "chaos 3":
-            inc = cloud.inject_chaos(ChaosScenario.RATE_LIMIT_MISCONFIG)
+            inc = _safe_inject(console, ChaosScenario.RATE_LIMIT_MISCONFIG)
+            if not inc:
+                continue
             console.print(f"[bold red]🚨 Injected Bad Rate-Limit Deployment! (Incident {inc.incident_id})[/bold red]")
             print_status_table()
             user_input = "API Gateway is returning 429 Too Many Requests to clients. Investigate and restore service."
 
         elif cmd == "chaos 4":
-            inc = cloud.inject_chaos(ChaosScenario.DB_CONNECTION_STARVATION)
+            inc = _safe_inject(console, ChaosScenario.DB_CONNECTION_STARVATION)
+            if not inc:
+                continue
             console.print(f"[bold red]🚨 Injected DB Connection Pool Starvation! (Incident {inc.incident_id})[/bold red]")
             print_status_table()
             user_input = "Order Service database connection pool is starved. Diagnose root cause, check blast radius, and remediate."

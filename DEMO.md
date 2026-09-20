@@ -1,80 +1,140 @@
-# 🎬 StrandsOps — 2-Minute Video & Live Demo Walkthrough
+# StrandsOps — 3-Minute Demo Video Script
 
-This script provides the exact sequence to demonstrate **StrandsOps** for your hackathon submission video.
-
----
-
-## Pre-Flight Setup
-
-1. **Launch the Dashboard:**
-   ```bash
-   cd strandops-sre
-   streamlit run src/strandops/web.py
-   ```
-   *Dashboard opens at `http://localhost:8501`.*
-
-2. **Verify Baseline State:**
-   - Notice the green indicator: metrics within SLA / all clear.
-   - Latency chart shows healthy sub-50ms bars across all 4 services.
-   - SQS Queue shows healthy visible message depth.
+For **WeMakeDevs First Commit**: judges watch a **recorded 3-minute video** (no live call). Show **what it does**, **who it is for**, and **where AWS fits**.
 
 ---
 
-## Scenario A: The SQS Poison-Pill Outage (60 Seconds)
+## What to share on screen (recommended order)
 
-### Step 1: The Outage (Chaos Injection)
-* In the left sidebar, click the red button: **`💣 1. Inject SQS Poison Pill Storm`**.
-* **What happens on screen:**
-  - Status banner turns **RED**: `🚨 ACTIVE ALERT: SEV1 — SQS Poison Pill Storm`.
-  - Error rate on `inventory-worker` immediately spikes to **84.5%**.
-  - Visible queue backlog jumps to **450 messages**.
-  - Dead-letter queue counter turns red.
+| Time | Screen | Why |
+|------|--------|-----|
+| 0:00–0:25 | You (optional) **or** title slide + GitHub/README | Problem + who it’s for |
+| 0:25–2:20 | **Streamlit** at `http://localhost:8501` | Real Strands + Bedrock agent loop (AWS load-bearing) |
+| 2:20–2:40 | **Postmortem** tab in Streamlit | Proof + learning |
+| 2:40–2:55 | **Vercel UI** [strandops-sre.vercel.app](https://strandops-sre.vercel.app) | Polished desk / Best UI signal (5–10s only) |
+| 2:55–3:00 | GitHub repo URL | Close |
 
-### Step 2: The Agent Takes Over
-* The chat box auto-populates (or type):
-  > *"Critical alert: SQS queue and inventory workers are failing. Investigate root cause, ensure safe blast radius, remediate, and verify recovery."*
-* Hit **Enter**.
+**Do not** open `.env` or show access keys on camera.
 
-### Step 3: Watch triage in real time
-The helper runs the full SRE loop:
-1. **🔍 Telemetry Inspection:**
-   `inspect_telemetry` reports `inventory-worker` error rate at 84.5% and P99 latency at 480ms.
-2. **📜 Log Diagnostics:**
-   `fetch_error_logs` scans recent stack traces and isolates `json.decoder.JSONDecodeError` on messages `msg-bad-881`, `msg-bad-882`, and `msg-bad-883`.
-3. **📦 Queue Inspection:**
-   `inspect_queue_health` confirms these 3 IDs are poison pills blocking worker execution.
-4. **🛡️ Blast Radius Analysis:**
-   `analyze_blast_radius` confirms quarantining these 3 messages is **SAFE** and will not drop valid consumer orders.
-5. **⚡ Targeted Remediation:**
-   `execute_remediation` moves the 3 poison pills to the Dead-Letter Queue.
-6. **✅ Soak verification:**
-   `verify_system_recovery` re-checks telemetry: error rate back within SLA (≤ 1%), P99 under **50ms**, queue backlog draining.
-7. **📄 Postmortem Generation:**
-   `generate_incident_postmortem` writes a short incident report.
-
-### Step 4: Show the Postmortem Tab
-* Click on the **"📄 Incident Postmortems"** tab in the dashboard.
-* Show the generated postmortem with:
-  - Incident ID & SEV1 rating
-  - MTTD (alert on SLA breach) and measured MTTR
-  - Root Cause Analysis & Quarantined Message IDs
-  - Preventative action items table.
+**Primary demo surface = Streamlit locally.** Vercel is the public browser simulator only (no Bedrock keys — by design).
 
 ---
 
-## Scenario B: Payment Gateway Memory Leak (30 Seconds)
+## How to run locally (before you hit Record)
 
-1. Click **`⚠️ 2. Inject Payment Gateway OOM`**.
-2. Show the latency chart: Payment Gateway latency spikes from **45ms to 3,450ms**, and memory reaches 1,940MB (near 2GB threshold).
-3. Type:
-   > *"Payment Gateway latency is degrading customer checkout. Triage and heal."*
-4. Agent isolates connection pool leak, checks blast radius, restarts the container, and verifies latency drops back to 48ms.
+### 1. One-time setup
+
+```bash
+cd strandops-sre
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+pip install -e ".[web,dev]"
+copy .env.example .env
+```
+
+Edit `.env` (keep this file private):
+
+```env
+MODEL_PROVIDER=bedrock
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_key
+AWS_SECRET_ACCESS_KEY=your_secret
+AWS_ACCOUNT_ID=your_12_digit_id
+CLOUD_BACKEND=simulator
+```
+
+Confirm Claude access is enabled in **Amazon Bedrock** for `us-east-1`.
+
+### 2. Start the agent desk (this is what you screen-share)
+
+```bash
+streamlit run src/strandops/web.py
+```
+
+Browser opens **http://localhost:8501**.  
+Sidebar should show model access active (green) when keys work.
+
+### 3. Optional second tab (for the last 15 seconds)
+
+Open [https://strandops-sre.vercel.app](https://strandops-sre.vercel.app) in another browser tab — switch to it only at the end.
+
+### 4. Pre-roll checklist
+
+- [ ] Cluster reset / healthy (green / all clear)  
+- [ ] Chat history cleared or fresh session  
+- [ ] Microphone levels OK; close Discord/Slack notifications  
+- [ ] Zoom browser to ~110% so charts/chat are readable  
+- [ ] Practice once: poison pill → Enter → wait for tools → postmortem  
 
 ---
 
-## Key Talking Points for Your Video Voiceover
+## Spoken script (≈ 3:00) — word-for-word friendly
 
-1. *"Modern cloud downtime costs over \$5,000 per minute. While alerting takes seconds, MTTR takes 45 minutes of human engineers manually digging through logs at 3 AM."*
-2. *"We built StrandsOps using the open-source AWS Strands Agents SDK to shrink that MTTR gap."*
-3. *"Notice that StrandsOps doesn't guess or run dangerous raw shell commands. It uses bounded, typed remediation steps and enforces a blast-radius check before touching anything."*
-4. *"Most importantly, it never declares victory blindly. It re-checks metrics across a soak window — error ≤ 1% and P99 ≤ 120 ms — before writing the postmortem."*
+### [0:00–0:25] Hook + who it’s for  
+**On screen:** Face or title “StrandsOps — On-call SRE co-pilot” + GitHub.
+
+> “Hi — I’m building **StrandsOps** for First Commit.  
+> It’s for **on-call engineers** at 3 AM, when checkout is down and MTTR is usually 45 to 90 minutes of digging through logs.  
+> StrandsOps investigates the outage, checks blast radius, applies a **safe typed fix**, soak-verifies recovery, then writes a postmortem.”
+
+### [0:25–0:45] Where AWS fits  
+**On screen:** Streamlit sidebar — account / region / Bedrock model.
+
+> “AWS is load-bearing here: we use the open-source **Strands Agents SDK** for the agent and tools, and **Amazon Bedrock** with Claude for reasoning.  
+> The cluster is an AWS-shaped simulator — API Gateway, SQS with DLQ, and microservices — so the demo is reproducible without risking a live production account.”
+
+### [0:45–1:00] Inject chaos  
+**On screen:** Click **Inject SQS Poison Pill Storm**. Point at red alert, error spike, queue backlog.
+
+> “I inject an SQS poison-pill storm. Inventory workers crash on bad JSON — error rate jumps toward 84%, backlog climbs, DLQ activity shows up. Same failure pattern you’d see in a real SQS outage.”
+
+### [1:00–2:05] Agent triage (let it run; narrate lightly)  
+**On screen:** Chat auto-prompt or press Enter. Watch tool calls / reply stream. Scroll if needed so tools are visible.
+
+> “I ask it to investigate, check blast radius, remediate, and verify.  
+> Watch: it reads telemetry and logs, finds the poison message IDs, confirms quarantine is safe, moves them to the DLQ — no raw shell, only bounded primitives — then soak-checks that error rate is back within SLA — under 1% — and P99 is healthy.  
+> It never declares victory on a single 200 OK.”
+
+*(If Bedrock is slow: stay calm — “It’s calling Bedrock and tools…” — don’t skip ahead.)*
+
+### [2:05–2:25] Postmortem  
+**On screen:** **Postmortems** tab → generate/open report. Scroll RCA + SLA proof.
+
+> “It writes an incident postmortem: root cause, MTTR, remediation steps, and follow-ups for the team. That’s the handoff a real on-call would leave for leadership.”
+
+### [2:25–2:40] What we learned (judging criterion)  
+**On screen:** Stay on postmortem or brief cut to healthy metrics.
+
+> “What we learned building this: mutating a queue list while quarantining skipped a poison pill — tests caught it. And early versions declared ‘fixed’ while latency was still thousands of milliseconds — that’s why soak verification is mandatory.”
+
+### [2:40–2:55] Public UI flash  
+**On screen:** Switch to Vercel tab — chaos lab / service map briefly.
+
+> “There’s also a public incident desk at strandops-sre.vercel.app for interactive demos. Bedrock keys stay on my machine only — the hosted UI is the safe simulator front-end.”
+
+### [2:55–3:00] Close  
+**On screen:** GitHub `https://github.com/Vapa1510/strandops-sre`
+
+> “Repo is public on GitHub. StrandsOps — safer on-call with Strands and Bedrock. Thanks.”
+
+---
+
+## Backup if Bedrock fails during recording
+
+1. Still inject chaos and show metrics turning red (simulator works without Bedrock).  
+2. Say: “Agent needs Bedrock; here’s the same triage loop on the public desk.”  
+3. Switch to Vercel → **Stage outage** → **Run triage** → show steps + postmortem.  
+4. Still name **Strands Agents SDK** + **Bedrock** as the local AWS path in the voiceover.
+
+---
+
+## Recording tips
+
+- One continuous take is fine; light cuts OK if you stay under 3:00.  
+- Prefer **1080p**, clear mic, no music under speech.  
+- Speak to the **five judging lenses**: idea/impact, Built on AWS, learning, execution, demo clarity.  
+- End on a working green cluster or a completed postmortem — never on an error stack.

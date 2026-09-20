@@ -105,12 +105,23 @@ def test_live_aws_provider_remediation_primitives_contract():
 
 def test_cloud_backend_toggle_instantiates_aws_provider(monkeypatch):
     from strandops.simulator import provider as prov_module
-    # Clear singleton cache
-    monkeypatch.setattr(prov_module, "_provider_instance", None)
+    from strandops.simulator.provider import reset_cloud_provider_cache
+
+    reset_cloud_provider_cache()
     monkeypatch.setenv("CLOUD_BACKEND", "aws")
 
     provider = prov_module.get_cloud_provider()
     assert isinstance(provider, LiveAWSProvider)
 
-    # Restore singleton cache
-    monkeypatch.setattr(prov_module, "_provider_instance", cloud)
+    # Restore default simulator singleton for other tests
+    reset_cloud_provider_cache()
+    monkeypatch.setenv("CLOUD_BACKEND", "simulator")
+    assert get_cloud_provider() is cloud
+
+
+def test_tools_cloud_proxy_resolves_to_active_provider():
+    from strandops.cloud_backend import cloud as tool_cloud, list_known_services
+
+    assert tool_cloud.get_topology() == cloud.get_topology()
+    assert "api-gateway" in list_known_services()
+    assert list_known_services() == list(cloud.service_configs.keys())

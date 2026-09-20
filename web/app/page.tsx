@@ -10,6 +10,7 @@ import { TelemetryTable } from "@/components/TelemetryTable";
 import { ActionDrawer } from "@/components/ActionDrawer";
 import { PostmortemModal } from "@/components/PostmortemModal";
 import { ClusterState, AgentStep } from "@/lib/engine";
+import { APP_CONFIG } from "@/lib/config";
 
 export default function Home() {
   const [clusterState, setClusterState] = useState<ClusterState | null>(null);
@@ -220,8 +221,8 @@ export default function Home() {
       />
 
       <footer className="border-t border-brand/15 bg-[#050a14]/80 backdrop-blur-md px-4 py-4 text-center text-xs text-slate-500">
-        StrandsOps SRE · On-call incident helper · AWS Account 3792-6468-7588 · WeMakeDevs Bharat
-        Builds 2026
+        StrandsOps SRE · {APP_CONFIG.modeLabel} · AWS Account {APP_CONFIG.awsAccountId} ·{" "}
+        {APP_CONFIG.modeHint} · WeMakeDevs Bharat Builds 2026
       </footer>
     </div>
   );

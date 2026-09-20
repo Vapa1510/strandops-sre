@@ -22,10 +22,23 @@ except ImportError:
     print("[ERROR] streamlit and plotly required. Run: pip install streamlit plotly")
     sys.exit(1)
 
-from strandops.simulator.cloud import cloud
+from strandops.cloud_backend import cloud
 from strandops.simulator.models import ChaosScenario
 from strandops.agent import create_sre_agent, get_provider_info
 from strandops.sla import max_error_rate_pct, max_p99_latency_ms
+
+
+def _inject_or_warn(scenario: ChaosScenario) -> bool:
+    """Inject chaos on simulator backends; warn if live AWS has no chaos API."""
+    try:
+        cloud.inject_chaos(scenario)
+        return True
+    except NotImplementedError:
+        st.warning(
+            "Chaos injection is only available when CLOUD_BACKEND=simulator. "
+            "Tools still talk to the live AWS provider for telemetry/remediation."
+        )
+        return False
 
 
 st.set_page_config(
@@ -60,6 +73,7 @@ with st.sidebar:
     st.header("☁️ Cloud Link")
     info = get_provider_info()
     st.markdown(f"**Linked Account:** `{info['account_id']}`")
+    st.caption(f"Cloud backend: `{info.get('cloud_backend', 'simulator')}` · Region: `{info['region']}`")
     if info["has_credentials"]:
         st.success(f"🟢 **Model access: Active**\n\nModel: `{info['model_id']}`\n\nRegion: `{info['region']}`")
     else:
@@ -69,11 +83,14 @@ with st.sidebar:
             key_id = st.text_input("AWS Access Key ID", value=os.getenv("AWS_ACCESS_KEY_ID", ""), type="password")
             secret = st.text_input("AWS Secret Access Key", value=os.getenv("AWS_SECRET_ACCESS_KEY", ""), type="password")
             region_val = st.text_input("AWS Region", value=info["region"])
+            account_val = st.text_input("AWS Account ID", value=os.getenv("AWS_ACCOUNT_ID", info["raw_account_id"]))
             if st.button("Connect model access", use_container_width=True):
                 if key_id and secret:
                     os.environ["AWS_ACCESS_KEY_ID"] = key_id
                     os.environ["AWS_SECRET_ACCESS_KEY"] = secret
                     os.environ["AWS_REGION"] = region_val
+                    if account_val:
+                        os.environ["AWS_ACCOUNT_ID"] = account_val.replace("-", "")
                     if "agent" in st.session_state:
                         del st.session_state["agent"]
                     st.success("Connected.")
@@ -84,24 +101,24 @@ with st.sidebar:
     st.markdown("Inject a realistic outage, then watch triage and recovery:")
 
     if st.button("💣 1. Inject SQS Poison Pill Storm", use_container_width=True):
-        cloud.inject_chaos(ChaosScenario.SQS_POISON_PILL)
-        st.session_state.quick_prompt = "Critical alert: SQS queue and inventory workers are failing. Investigate root cause, ensure safe blast radius, remediate, and verify recovery."
-        st.rerun()
+        if _inject_or_warn(ChaosScenario.SQS_POISON_PILL):
+            st.session_state.quick_prompt = "Critical alert: SQS queue and inventory workers are failing. Investigate root cause, ensure safe blast radius, remediate, and verify recovery."
+            st.rerun()
 
     if st.button("⚠️ 2. Inject Payment Gateway OOM", use_container_width=True):
-        cloud.inject_chaos(ChaosScenario.MEMORY_LEAK_OOM)
-        st.session_state.quick_prompt = "Alert: Payment Gateway latency spiked to 3200ms and memory is near limit. Triage and remediate."
-        st.rerun()
+        if _inject_or_warn(ChaosScenario.MEMORY_LEAK_OOM):
+            st.session_state.quick_prompt = "Alert: Payment Gateway latency spiked to 3200ms and memory is near limit. Triage and remediate."
+            st.rerun()
 
     if st.button("💥 3. Inject Bad Rate-Limit Deploy", use_container_width=True):
-        cloud.inject_chaos(ChaosScenario.RATE_LIMIT_MISCONFIG)
-        st.session_state.quick_prompt = "Alert: API Gateway is rejecting 85% of customer traffic with HTTP 429. Investigate and restore service."
-        st.rerun()
+        if _inject_or_warn(ChaosScenario.RATE_LIMIT_MISCONFIG):
+            st.session_state.quick_prompt = "Alert: API Gateway is rejecting 85% of customer traffic with HTTP 429. Investigate and restore service."
+            st.rerun()
 
     if st.button("🛑 4. Inject DB Pool Deadlock", use_container_width=True):
-        cloud.inject_chaos(ChaosScenario.DB_CONNECTION_STARVATION)
-        st.session_state.quick_prompt = "Critical alert: Order Service database connection pool is starved and requests are timing out. Triage and remediate."
-        st.rerun()
+        if _inject_or_warn(ChaosScenario.DB_CONNECTION_STARVATION):
+            st.session_state.quick_prompt = "Critical alert: Order Service database connection pool is starved and requests are timing out. Triage and remediate."
+            st.rerun()
 
     if st.button("🔄 Reset Cluster to Healthy", use_container_width=True):
         cloud.reset()

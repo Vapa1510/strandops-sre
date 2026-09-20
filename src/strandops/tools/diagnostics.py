@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from strands import tool
-from strandops.simulator.cloud import cloud
+from strandops.cloud_backend import cloud
 from strandops.simulator.models import LogSeverity
 
 _ERROR_LEVELS = {LogSeverity.WARN, LogSeverity.ERROR, LogSeverity.FATAL}

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from strands import tool
-from strandops.simulator.cloud import cloud
+from strandops.cloud_backend import cloud
 from strandops.plugins.registry import registry
 
 # Action alias mapping for natural SRE agent inputs

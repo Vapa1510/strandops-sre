@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import { X, Copy, Download, Check, FileText } from "lucide-react";
 
+import { APP_CONFIG } from "@/lib/config";
+
 interface PostmortemModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -72,7 +74,9 @@ export function PostmortemModal({ isOpen, onClose, markdown }: PostmortemModalPr
         </div>
 
         <div className="px-6 py-3 border-t border-brand/15 bg-brand/5 flex items-center justify-between text-[11px] text-slate-400">
-          <span className="font-mono">AWS Account: 3792-6468-7588 · Region: us-east-1</span>
+          <span className="font-mono">
+            AWS Account: {APP_CONFIG.awsAccountId} · Region: {APP_CONFIG.awsRegion}
+          </span>
           <button onClick={onClose} className="btn-ghost !py-1.5 !px-4 !text-xs">
             Close
           </button>

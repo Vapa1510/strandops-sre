@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 from strands import tool
-from strandops.simulator.cloud import cloud
+from strandops.cloud_backend import cloud
 
 
 @tool

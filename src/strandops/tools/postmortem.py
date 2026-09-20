@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from strands import tool
-from strandops.simulator.cloud import cloud
+from strandops.cloud_backend import cloud
 from strandops.simulator.models import ChaosScenario
 from strandops.sla import is_sla_breached, max_error_rate_pct, max_p99_latency_ms
 

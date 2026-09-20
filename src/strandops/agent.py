@@ -74,6 +74,7 @@ def get_provider_info() -> dict:
         "has_credentials": has_keys,
         "status": "Connected" if has_keys else "Waiting for AWS keys",
         "inference_tier": "Cache first, then full investigation" if has_keys else "Local / single path",
+        "cloud_backend": os.getenv("CLOUD_BACKEND", "simulator").lower(),
     }
 
 

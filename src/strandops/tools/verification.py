@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import time
 from strands import tool
-from strandops.simulator.cloud import cloud
+from strandops.cloud_backend import cloud
 from strandops.sla import is_sla_breached, max_error_rate_pct, max_p99_latency_ms
 
 

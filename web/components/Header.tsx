@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { RefreshCw, Cpu, Hexagon, Copy, Check } from "lucide-react";
 import { ClusterState } from "@/lib/engine";
+import { APP_CONFIG } from "@/lib/config";
 
 interface HeaderProps {
   clusterState: ClusterState | null;
@@ -25,7 +26,7 @@ export function Header({ clusterState, onReset, loading }: HeaderProps) {
   }, []);
 
   const handleCopyAccount = () => {
-    navigator.clipboard.writeText("3792-6468-7588");
+    navigator.clipboard.writeText(APP_CONFIG.awsAccountId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -73,7 +74,7 @@ export function Header({ clusterState, onReset, loading }: HeaderProps) {
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand/20 bg-brand-muted/40 text-slate-300">
             <span className="text-slate-500">AWS</span>
             <span className="text-amber-300 font-semibold tracking-wider font-mono">
-              3792-6468-7588
+              {APP_CONFIG.awsAccountId}
             </span>
             <button
               onClick={handleCopyAccount}
@@ -90,7 +91,7 @@ export function Header({ clusterState, onReset, loading }: HeaderProps) {
 
           <div className="px-2.5 py-1.5 rounded-xl border border-brand/20 bg-brand-muted/40 text-slate-300">
             <span className="text-slate-500">Region </span>
-            <span className="text-brand-soft font-medium">us-east-1</span>
+            <span className="text-brand-soft font-medium">{APP_CONFIG.awsRegion}</span>
           </div>
 
           <div className="px-2.5 py-1.5 rounded-xl border border-brand/20 bg-brand-muted/40 text-slate-300 flex items-center gap-1.5">

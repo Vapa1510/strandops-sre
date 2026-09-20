@@ -3,6 +3,7 @@
 import React from "react";
 import { Shield, Activity, Gauge, AlertTriangle, ArrowRight } from "lucide-react";
 import { ClusterState, SLA_MAX_ERROR_RATE, SLA_MAX_P99_MS } from "@/lib/engine";
+import { APP_CONFIG } from "@/lib/config";
 
 interface HeroStripProps {
   clusterState: ClusterState | null;
@@ -36,6 +37,9 @@ export function HeroStrip({
         <span className="glass-chip">
           <Activity className="w-3.5 h-3.5 text-brand-bright" />
           Soak-verified recovery
+        </span>
+        <span className="glass-chip text-slate-300">
+          {APP_CONFIG.modeLabel}
         </span>
       </div>
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from strands import tool
-from strandops.simulator.cloud import cloud
+from strandops.cloud_backend import cloud, list_known_services
 from strandops.sla import is_sla_breached, max_error_rate_pct, max_p99_latency_ms
 
 
@@ -30,7 +30,7 @@ def inspect_telemetry(service_name: str = "") -> str:
     if not snapshots:
         return json.dumps({
             "status": "error",
-            "message": f"Service '{service_name}' not found. Available: {list(cloud.service_configs.keys())}"
+            "message": f"Service '{service_name}' not found. Available: {list_known_services()}"
         })
 
     report = []

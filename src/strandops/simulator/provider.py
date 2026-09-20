@@ -115,12 +115,18 @@ class CloudProvider(ABC):
 _provider_instance: Optional[CloudProvider] = None
 
 
+def reset_cloud_provider_cache() -> None:
+    """Clear the cached provider so the next get_cloud_provider() re-reads CLOUD_BACKEND."""
+    global _provider_instance
+    _provider_instance = None
+
+
 def get_cloud_provider() -> CloudProvider:
     """Factory that returns the configured cloud backend singleton.
 
     Reads CLOUD_BACKEND from the environment:
         'simulator' (default) — in-process event-driven simulator
-        'aws'                 — live AWS CloudWatch / ECS / SQS (future)
+        'aws'                 — live AWS CloudWatch / ECS / SQS adapter
     """
     global _provider_instance
     if _provider_instance is not None:
@@ -134,6 +140,6 @@ def get_cloud_provider() -> CloudProvider:
         return _provider_instance
 
     # Default: canonical in-process simulator singleton
-    from strandops.simulator.cloud import cloud
-    _provider_instance = cloud
+    from strandops.simulator.cloud import cloud as simulator_cloud
+    _provider_instance = simulator_cloud
     return _provider_instance
