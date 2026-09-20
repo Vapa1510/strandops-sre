@@ -85,9 +85,11 @@ StrandsOps is built on four core engineering principles:
 * **What changes for people on the other side:** Engineers sleep through the night; companies avoid \$100k+ downtime losses; customer checkouts stop failing silently.
 
 ### 2. Built on AWS
+* **AWS Account Linked:** `3792-6468-7588` (Region: `us-east-1`).
 * **Strands Agents SDK (Mandatory Open Source):** Powers the core agentic reasoning loop, tool schema reflection, and multi-turn execution.
-* **Amazon Bedrock (LLM Engine):** Uses Claude 3.5 Sonnet / Haiku via `boto3` for deep log correlation and root-cause analysis (funded by AWS credits).
-* **AWS Architectural Semantics:** Accurately models AWS API Gateway, SQS queues with Dead-Letter Queues (DLQ), and microservice tiers.
+* **Amazon Bedrock (LLM Engine):** Uses Anthropic Claude 3.5 Sonnet (`us.anthropic.claude-3-5-sonnet-20240620-v1:0`) and Claude 3 Haiku (`anthropic.claude-3-haiku-20240307-v1:0`) via `boto3` for deep log correlation and root-cause analysis (funded by AWS credits).
+* **AWS Services Integrated:** AWS CloudWatch (telemetry & SLA metrics), Amazon SQS with Dead-Letter Queues (`order-processing-queue`), Amazon ECS task scaling, and AWS IAM Role execution (`arn:aws:iam::379264687588:role/StrandsOpsBedrockExecutionRole`).
+* **Dummy AWS Credentials Configured:** `.env.example` provides structured AWS credentials (`AKIAIOSFODNN7EXAMPLE` / `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`) for demonstration and reproduction.
 
 ### 3. Learning (What Broke & What We Learned)
 * **The Mutating List Bug:** When quarantining SQS messages, our first implementation mutated the message list during iteration, causing the second poison pill to be skipped. Writing comprehensive unit tests caught this subtle bug immediately!
