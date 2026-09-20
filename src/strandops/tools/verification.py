@@ -60,6 +60,7 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
     telemetry_history = []
     all_checkpoints_healthy = True
 
+    all_failing_services = []
     failing_services = []
     healthy_services = []
     queue = cloud.get_queue_state()
@@ -93,6 +94,8 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
             }
             if is_failing:
                 failing_services.append(entry)
+                if not any(f["service"] == entry["service"] for f in all_failing_services):
+                    all_failing_services.append(entry)
             else:
                 healthy_services.append(entry)
 
@@ -124,23 +127,35 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
                 memory_leaking_again = True
                 break
 
-    is_flapping = (passed_count > 0 and failed_count > 0) or memory_leaking_again
+    # Check for latency jitter variance across checkpoints (> 20% degradation)
+    latency_jitter_unstable = False
+    if len(telemetry_history) >= 2:
+        first_lat = {s.service_name: s.p99_latency_ms for s in telemetry_history[0]}
+        last_lat = {s.service_name: s.p99_latency_ms for s in telemetry_history[-1]}
+        for svc_name, init_p99 in first_lat.items():
+            final_p99 = last_lat.get(svc_name, init_p99)
+            if init_p99 > 0 and (final_p99 - init_p99) / init_p99 > 0.20:
+                latency_jitter_unstable = True
+                break
+
+    is_flapping = (passed_count > 0 and failed_count > 0) or memory_leaking_again or latency_jitter_unstable
 
     if is_flapping:
         stability = "UNSTABLE_FLAPPING"
         verdict = (
             f"⚠️ UNSTABLE_FLAPPING: Service recovered in {passed_count}/{num_checks} checkpoints "
-            f"but degraded in {failed_count} or showed upward memory slope. System failed soak test."
+            f"but degraded in {failed_count} or showed upward memory slope / latency jitter. System failed soak test."
         )
         all_checkpoints_healthy = False
+        stability_confidence = round(min((passed_count / num_checks) * 100, 50.0), 1)
     elif all_checkpoints_healthy:
         stability = "STABLE"
         verdict = "✅ SUCCESS: All services healthy and operating within SLA parameters across soak window."
+        stability_confidence = round((passed_count / num_checks) * 100, 1)
     else:
         stability = "DEGRADED"
         verdict = "❌ DEGRADED: One or more services are still breaching SLA thresholds across all checkpoints."
-
-    stability_confidence = round((passed_count / num_checks) * 100, 1)
+        stability_confidence = round((passed_count / num_checks) * 100, 1)
 
     return json.dumps({
         "all_recovered": all_checkpoints_healthy,
@@ -151,9 +166,10 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
         "checkpoints_passed": passed_count,
         "checkpoints_failed": failed_count,
         "memory_slope_stable": not memory_leaking_again,
+        "latency_jitter_stable": not latency_jitter_unstable,
         "checkpoint_details": checkpoint_results,
         "queue_healthy": queue_healthy,
         "healthy_services": healthy_services,
-        "unrecovered_services": failing_services,
+        "unrecovered_services": all_failing_services if is_flapping else failing_services,
         "verdict": verdict,
     }, indent=2)

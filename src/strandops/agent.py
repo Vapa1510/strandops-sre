@@ -89,7 +89,7 @@ def _build_model():
             return OpenAIModel(model_id=model_id)
         except ImportError:
             print("[WARN] OpenAI dependencies not found. Install with: pip install 'strands-agents[openai]'")
-            sys.exit(1)
+            return None
 
     elif provider == "anthropic":
         try:
@@ -98,7 +98,7 @@ def _build_model():
             return AnthropicModel(model_id=model_id)
         except ImportError:
             print("[WARN] Anthropic dependencies not found. Install with: pip install 'strands-agents[anthropic]'")
-            sys.exit(1)
+            return None
 
     elif provider == "ollama":
         try:
@@ -108,7 +108,7 @@ def _build_model():
             return OllamaModel(host=host, model_id=model_id)
         except ImportError:
             print("[WARN] Ollama dependencies not found. Install with: pip install 'strands-agents[ollama]'")
-            sys.exit(1)
+            return None
 
     else:  # Default: Amazon Bedrock (Primary choice for the hackathon)
         try:

@@ -37,13 +37,18 @@ class RestartServicePlugin(RemediationPlugin):
     def evaluate_blast_radius(self, cloud: Any, target: str) -> Dict[str, Any]:
         base = super().evaluate_blast_radius(cloud, target)
         blast_limit = int(os.getenv("AUTO_REMEDIATE_BLAST_LIMIT", "2"))
-        if target == "order-service":
+        if base["dependent_count"] > blast_limit:
             base["risk_level"] = "HIGH"
-            base["safe_to_proceed"] = base["dependent_count"] <= blast_limit
-            if not base["safe_to_proceed"]:
-                base["safety_rationale"].append(
-                    f"BLOCKED: {base['dependent_count']} dependents exceed auto-remediate limit ({blast_limit})."
-                )
+            base["safe_to_proceed"] = False
+            base["safety_rationale"].append(
+                f"BLOCKED: {base['dependent_count']} dependents exceed auto-remediate limit ({blast_limit})."
+            )
+        elif target == "order-service":
+            base["risk_level"] = "HIGH"
+            base["safe_to_proceed"] = True
+            base["safety_rationale"].append(
+                f"Auto-approved: {base['dependent_count']} dependents within threshold ({blast_limit})."
+            )
         elif target == "payment-gateway":
             base["risk_level"] = "MEDIUM"
         else:

@@ -155,13 +155,24 @@ The **StrandsOps Autonomous SRE Agent** engaged immediately, diagnosed the root 
     for idx, act in enumerate(actions, 1):
         postmortem_md += f"{idx}. {act}\n"
 
+    # Measure live telemetry and queue status dynamically for closed-loop verification proof
+    live_telemetry = cloud.get_telemetry()
+    live_queue = cloud.get_queue_state()
+    max_live_err = max((t.error_rate_pct for t in live_telemetry), default=0.0)
+    max_live_p99 = max((t.p99_latency_ms for t in live_telemetry), default=0.0)
+    queue_backlog = live_queue.approximate_messages_visible
+    dlq_count = live_queue.dead_letter_count
+    all_within_sla = (max_live_err <= 1.0) and (max_live_p99 <= 120.0) and (len(live_queue.poison_pill_ids) == 0)
+    proof_status = "VERIFIED HEALTHY" if all_within_sla else "DEGRADED (ACTION REQUIRED)"
+
     postmortem_md += f"""
 ---
 
-## 4. Closed-Loop Verification Proof
-* **Error Rate:** 0.0% (Down from peak failure rate)
-* **P99 Latency:** < 50 ms (Operating safely within 120ms SLA)
-* **Queue Backlog:** Drained to healthy baseline
+## 4. Closed-Loop Verification Proof ({proof_status})
+* **Peak Error Rate:** {max_live_err:.1f}% (SLA: <= 1.0%)
+* **P99 Latency:** {max_live_p99:.1f} ms (SLA: <= 120.0 ms)
+* **Queue Backlog:** {queue_backlog} visible messages | DLQ: {dlq_count} quarantined
+* **System Health:** {"Operating safely within green SLA parameters" if all_within_sla else "Warning: Active metric degradation detected"}
 
 ---
 

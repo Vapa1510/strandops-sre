@@ -121,9 +121,9 @@ with st.sidebar:
 
 # Telemetry Overview KPI Cards
 col1, col2, col3, col4 = st.columns(4)
-avg_p99 = sum(t.p99_latency_ms for t in telemetry) / len(telemetry)
-max_err = max(t.error_rate_pct for t in telemetry)
-total_rps = sum(t.requests_per_sec for t in telemetry)
+avg_p99 = sum(t.p99_latency_ms for t in telemetry) / len(telemetry) if telemetry else 0.0
+max_err = max((t.error_rate_pct for t in telemetry), default=0.0)
+total_rps = sum(t.requests_per_sec for t in telemetry) if telemetry else 0.0
 
 with col1:
     st.metric("Avg P99 Latency", f"{avg_p99:.1f} ms", delta="-Normal" if avg_p99 < 120 else "+HIGH", delta_color="inverse")
@@ -188,7 +188,16 @@ with tab_chat:
 
         with st.chat_message("assistant"):
             with st.spinner("StrandsOps analyzing telemetry, correlating error logs & checking blast radius..."):
+                triage_banner = ""
                 try:
+                    from strandops.agent import fast_triage_incident
+                    if inc and inc.affected_services:
+                        t_info = fast_triage_incident(inc.affected_services[0])
+                        if not t_info.get("escalation_needed"):
+                            triage_banner = "⚡ **Tier-0 Semantic Cache Hit** (< 1ms, $0.00 cost) — Verified Playbook Recalled\n\n"
+                        else:
+                            triage_banner = "⚡ **Tier-1 Fast Triage** → Escalated to Tier-2 (Claude 3.5 Sonnet on Amazon Bedrock)\n\n"
+
                     agent = get_agent()
                     response = agent(prompt)
 
@@ -200,6 +209,7 @@ with tab_chat:
                                 reply += block.text
                     if not reply:
                         reply = str(response)
+                    reply = triage_banner + reply
                 except Exception as e:
                     err_msg = str(e)
                     err_type = type(e).__name__

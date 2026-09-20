@@ -13,6 +13,7 @@ This module provides a lightweight, event-driven in-process simulator that model
 - Real-world failure modes: poison pills, connection leaks, bad deployments
 """
 import os
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -21,6 +22,7 @@ from strandops.simulator.models import (
     ChaosScenario,
     IncidentRecord,
     IncidentSeverity,
+    IncidentStatus,
     LogSeverity,
     MetricSnapshot,
     QueueState,
@@ -41,6 +43,7 @@ class CloudInfrastructure(CloudProvider):
     """Simulated cloud environment with realistic microservice topology and chaos injection."""
 
     def __init__(self) -> None:
+        self._lock = threading.RLock()
         self.reset()
 
     def reset(self) -> None:
@@ -335,12 +338,12 @@ class CloudInfrastructure(CloudProvider):
                 quarantined.append(mid)
                 self.queue.dead_letter_count += 1
 
-        # When all poison pills are isolated, the queue and workers recover
-        if not self.queue.poison_pill_ids:
+        # When all poison pills are isolated and SQS chaos was active, the queue and workers recover
+        if self.active_chaos == ChaosScenario.SQS_POISON_PILL and not self.queue.poison_pill_ids:
             self.queue.approximate_messages_visible = 4
             self.active_chaos = None
             if self.active_incident:
-                self.active_incident.status = "RESOLVED"
+                self.active_incident.status = IncidentStatus.RESOLVED
                 self.active_incident.resolved_at = datetime.now(timezone.utc)
                 self.active_incident.remediation_actions_taken.append(
                     f"Quarantined {len(quarantined)} poison messages to DLQ: {', '.join(quarantined)}"
@@ -375,7 +378,7 @@ class CloudInfrastructure(CloudProvider):
         if self.active_chaos == ChaosScenario.MEMORY_LEAK_OOM and svc == "payment-gateway":
             self.active_chaos = None
             if self.active_incident:
-                self.active_incident.status = "RESOLVED"
+                self.active_incident.status = IncidentStatus.RESOLVED
                 self.active_incident.resolved_at = datetime.now(timezone.utc)
                 self.active_incident.remediation_actions_taken.append(
                     f"Restarted '{svc}' container; reset memory pool and flushed unclosed HTTP connections."
@@ -383,7 +386,7 @@ class CloudInfrastructure(CloudProvider):
         elif self.active_chaos == ChaosScenario.DB_CONNECTION_STARVATION and svc == "order-service":
             self.active_chaos = None
             if self.active_incident:
-                self.active_incident.status = "RESOLVED"
+                self.active_incident.status = IncidentStatus.RESOLVED
                 self.active_incident.resolved_at = datetime.now(timezone.utc)
                 self.active_incident.remediation_actions_taken.append(
                     f"Restarted '{svc}' container; flushed hung database transactions and reset connection pool (50/50 ready)."
@@ -413,7 +416,7 @@ class CloudInfrastructure(CloudProvider):
             self.service_configs["api-gateway"]["version"] = "v1.8.2"
             self.active_chaos = None
             if self.active_incident:
-                self.active_incident.status = "RESOLVED"
+                self.active_incident.status = IncidentStatus.RESOLVED
                 self.active_incident.resolved_at = datetime.now(timezone.utc)
                 self.active_incident.remediation_actions_taken.append(
                     f"Rolled back {svc} from v1.8.3 to v1.8.2; restored rate_limit_rps=500"
@@ -444,7 +447,10 @@ class CloudInfrastructure(CloudProvider):
         if svc not in self.service_configs:
             return {"status": "error", "reason": f"Unknown service '{service_name}'"}
 
-        max_delta = int(os.getenv("MAX_SCALE_DELTA", "5"))
+        try:
+            max_delta = int(os.getenv("MAX_SCALE_DELTA", "5"))
+        except (ValueError, TypeError):
+            max_delta = 5
         clamped_delta = max(-max_delta, min(delta, max_delta))
 
         old_count = self.instance_counts.get(svc, 2)

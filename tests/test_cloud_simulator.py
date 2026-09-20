@@ -209,3 +209,17 @@ def test_telemetry_query_for_all_returns_all_four():
     assert len(cloud.get_telemetry(None)) == 4
     assert len(cloud.get_telemetry("")) == 4
     assert len(cloud.get_telemetry("all")) == 4
+
+
+def test_quarantine_does_not_corrupt_unrelated_active_incident():
+    """Calling quarantine on an already-empty queue must not resolve unrelated active incidents."""
+    inc = cloud.inject_chaos(ChaosScenario.MEMORY_LEAK_OOM)
+    assert cloud.active_chaos == ChaosScenario.MEMORY_LEAK_OOM
+    assert inc.status == "OPEN"
+
+    res = cloud.quarantine_queue_messages("order-processing-queue", [])
+    assert res["status"] == "success"
+    # Unrelated memory leak incident MUST remain OPEN and ACTIVE
+    assert cloud.active_chaos == ChaosScenario.MEMORY_LEAK_OOM
+    assert inc.status == "OPEN"
+

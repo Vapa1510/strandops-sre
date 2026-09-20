@@ -143,3 +143,41 @@ def test_postmortem_contains_preventative_action_items_table():
     report = pm["markdown_report"]
     assert "Preventative Action Items" in report
     assert "| Action Item | Type | Owner | Status |" in report
+
+
+def test_latency_jitter_triggers_flapping_and_penalizes_confidence(monkeypatch):
+    """Sudden latency jitter (> 20% degradation) triggers UNSTABLE_FLAPPING and caps confidence at <= 50%."""
+    from strandops.simulator.models import MetricSnapshot, ServiceHealth
+    call_count = 0
+
+    def mock_get_telemetry(target=None):
+        nonlocal call_count
+        call_count += 1
+        # Checkpoint 1: 40ms, Checkpoint 2: 70ms (> 20% jitter)
+        lat = 40.0 if call_count <= 2 else 70.0
+        return [
+            MetricSnapshot(
+                service_name="payment-gateway",
+                p50_latency_ms=18.0, p95_latency_ms=38.0, p99_latency_ms=lat,
+                error_rate_pct=0.0, requests_per_sec=145.0, memory_usage_mb=220.0,
+                cpu_usage_pct=14.5, status=ServiceHealth.HEALTHY,
+            )
+        ]
+
+    monkeypatch.setattr(cloud, "get_telemetry", mock_get_telemetry)
+    res = json.loads(verify_system_recovery("payment-gateway", soak_checks=2))
+    assert res["stability"] == "UNSTABLE_FLAPPING"
+    assert res["all_recovered"] is False
+    assert res["latency_jitter_stable"] is False
+    assert float(res["stability_confidence"].rstrip("%")) <= 50.0
+
+
+def test_postmortem_dynamic_metrics_reporting():
+    """Postmortem reports live telemetry metrics and verification status dynamically."""
+    pm = json.loads(generate_incident_postmortem())
+    report = pm["markdown_report"]
+    assert "Closed-Loop Verification Proof" in report
+    assert "Peak Error Rate:" in report
+    assert "P99 Latency:" in report
+    assert "Queue Backlog:" in report
+

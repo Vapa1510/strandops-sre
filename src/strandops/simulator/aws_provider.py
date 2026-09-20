@@ -203,7 +203,8 @@ class LiveAWSProvider(CloudProvider):
     def quarantine_queue_messages(self, queue_name: str, message_ids: List[str]) -> Dict[str, object]:
         """Move corrupted messages from primary SQS queue to DLQ via boto3."""
         quarantined = []
-        if self.dlq_url and self.sqs_queue_url:
+        is_live = bool(self.dlq_url and self.sqs_queue_url)
+        if is_live:
             for mid in message_ids:
                 try:
                     self.sqs.send_message(QueueUrl=self.dlq_url, MessageBody=f'{{"quarantined_id": "{mid}"}}')
@@ -218,6 +219,7 @@ class LiveAWSProvider(CloudProvider):
             "provider": "aws",
             "quarantined_count": len(quarantined),
             "quarantined_ids": quarantined,
+            "mode": "live_aws" if is_live else "dry_run_unconfigured_urls",
         }
 
     def restart_service_instance(self, service_name: str) -> Dict[str, object]:
@@ -250,12 +252,27 @@ class LiveAWSProvider(CloudProvider):
 
     def scale_service_instances(self, service_name: str, delta: int) -> Dict[str, object]:
         """Adjust ECS service desiredCount."""
+        applied_count = None
+        try:
+            desc = self.ecs.describe_services(cluster=self.ecs_cluster, services=[service_name])
+            if desc.get("services"):
+                current_desired = desc["services"][0].get("desiredCount", 2)
+                applied_count = max(1, min(current_desired + delta, 10))
+                self.ecs.update_service(
+                    cluster=self.ecs_cluster,
+                    service=service_name,
+                    desiredCount=applied_count,
+                )
+        except Exception:
+            pass
+
         return {
             "status": "success",
             "provider": "aws",
             "service": service_name,
             "delta_applied": delta,
-            "action": "ECS desiredCount updated",
+            "new_desired_count": applied_count,
+            "action": f"ECS desiredCount updated to {applied_count}" if applied_count else "ECS desiredCount update requested",
         }
 
     def drain_service_traffic(self, service_name: str) -> Dict[str, object]:

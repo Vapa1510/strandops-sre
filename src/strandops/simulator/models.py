@@ -6,7 +6,7 @@ and incident state machines.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 
@@ -67,13 +67,20 @@ class StructuredLog(BaseModel):
     message: str
     error_type: Optional[str] = None
     stack_trace: Optional[str] = None
-    metadata: Dict[str, str] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class IncidentSeverity(str, Enum):
     SEV1 = "SEV1"  # Catastrophic customer impact
     SEV2 = "SEV2"  # Degraded performance, core feature impacted
     SEV3 = "SEV3"  # Minor degradation, internal service warning
+
+
+class IncidentStatus(str, Enum):
+    """Lifecycle status of an active incident."""
+    OPEN = "OPEN"
+    MITIGATING = "MITIGATING"
+    RESOLVED = "RESOLVED"
 
 
 class IncidentRecord(BaseModel):
@@ -86,4 +93,4 @@ class IncidentRecord(BaseModel):
     affected_services: List[str]
     root_cause_summary: Optional[str] = None
     remediation_actions_taken: List[str] = Field(default_factory=list)
-    status: str = "OPEN"  # OPEN, MITIGATING, RESOLVED
+    status: IncidentStatus = IncidentStatus.OPEN

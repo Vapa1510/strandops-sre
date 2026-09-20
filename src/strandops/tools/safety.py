@@ -46,7 +46,11 @@ def analyze_blast_radius(proposed_action: str, target_service: str) -> str:
         rationale.append("Worker threads will immediately unblock and resume processing healthy messages.")
 
     elif "restart" in action:
-        if target == "payment-gateway":
+        if len(dependents) > blast_limit:
+            risk_level = "HIGH"
+            safe_to_proceed = False
+            rationale.append(f"⚠️ BLOCKED: {len(dependents)} dependents exceed auto-remediate limit ({blast_limit}). Requires human approval.")
+        elif target == "payment-gateway":
             risk_level = "MEDIUM"
             rationale.append("Payment gateway has no downstream dependencies; restarting flushes connection leaks safely.")
             rationale.append(f"Upstream callers ({', '.join(dependents) or 'none'}) will experience brief retry attempts (~1-2s).")
@@ -54,12 +58,8 @@ def analyze_blast_radius(proposed_action: str, target_service: str) -> str:
             risk_level = "HIGH"
             rationale.append("Order service is the central commerce engine. Restarting will temporarily interrupt checkout API.")
             rationale.append(f"Blast radius: {len(dependents)} direct dependent(s) ({', '.join(dependents) or 'none'}).")
-            # Only auto-approve if dependents are within the configurable safety limit
-            safe_to_proceed = len(dependents) <= blast_limit
-            if not safe_to_proceed:
-                rationale.append(f"⚠️ BLOCKED: {len(dependents)} dependents exceed auto-remediate limit ({blast_limit}). Requires human approval.")
-            else:
-                rationale.append(f"Auto-approved: {len(dependents)} dependent(s) within safety threshold ({blast_limit}).")
+            safe_to_proceed = True
+            rationale.append(f"Auto-approved: {len(dependents)} dependent(s) within safety threshold ({blast_limit}).")
         else:
             risk_level = "LOW"
             rationale.append(f"Standard container reboot on {target}.")
