@@ -60,6 +60,11 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
     telemetry_history = []
     all_checkpoints_healthy = True
 
+    failing_services = []
+    healthy_services = []
+    queue = cloud.get_queue_state()
+    queue_healthy = len(queue.poison_pill_ids) == 0
+
     delay = 0.5
     if soak_window_seconds > 0:
         delay = min(float(soak_window_seconds) / max(num_checks - 1, 1), 1.0)
