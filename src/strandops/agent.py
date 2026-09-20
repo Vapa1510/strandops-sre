@@ -35,8 +35,14 @@ Available Tools:
 2. fetch_error_logs: Read recent error logs and stack traces from microservices.
 3. inspect_queue_health: Inspect SQS message backlogs, dead-letter count, and poison pill IDs.
 4. analyze_blast_radius: Mandatory safety check to evaluate dependency risks before remediation.
-5. execute_remediation: Run safe operational primitives ('quarantine_messages', 'restart_service', 'rollback_config').
-6. verify_system_recovery: Closed-loop check ensuring all services and queues are within green SLA limits.
+5. execute_remediation: Run safe operational primitives:
+   - 'quarantine_messages' (isolate corrupted messages to DLQ)
+   - 'restart_service' (graceful container reboot for memory/pool leaks)
+   - 'rollback_config' (revert bad deployment to last stable version)
+   - 'scale_service' (adjust instance count to handle load spikes, use parameters_json: {"delta": N})
+   - 'drain_traffic' (gracefully stop new requests for maintenance)
+6. verify_system_recovery: Closed-loop check with soak-window verification.
+   Use soak_checks=3 for production incidents to catch flapping services.
 7. generate_incident_postmortem: Output an executive Markdown postmortem summarizing the incident.
 
 Communication:
@@ -53,15 +59,18 @@ def get_provider_info() -> dict:
     """Return active model provider configuration and AWS Bedrock status."""
     provider = os.getenv("MODEL_PROVIDER", "bedrock").lower()
     model_id = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20240620-v1:0")
+    triage_model_id = os.getenv("BEDROCK_TRIAGE_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     region = os.getenv("AWS_REGION", "us-east-1")
     has_keys = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
     
     return {
         "provider": provider,
         "model_id": model_id,
+        "triage_model_id": triage_model_id,
         "region": region,
         "has_credentials": has_keys,
         "status": "Connected (Amazon Bedrock Active)" if has_keys else "AWS Bedrock Configured (Awaiting Keys)",
+        "inference_tier": "Two-Tier (Haiku Triage → Sonnet Reasoning)" if has_keys else "Single-Tier",
     }
 
 

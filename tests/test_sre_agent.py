@@ -242,3 +242,80 @@ def test_postmortem_rate_limit_scenario_has_correct_rca():
     report = pm_data["markdown_report"]
     assert "rate limiter" in report.lower() or "429" in report
     assert "corrupted message payloads" not in report.lower()
+
+
+# =============================================================================
+# 5. Competitive Improvement Tests (Expanded Scope, Soak, Provider)
+# =============================================================================
+
+def test_scale_service_remediation():
+    """Scale service should adjust instance count and return metadata."""
+    raw = execute_remediation("scale_service", "inventory-worker", '{"delta": 3}')
+    data = json.loads(raw)
+    assert data["action_executed"] == "scale_service"
+    assert data["result"]["status"] == "success"
+    assert data["result"]["new_count"] == 5  # was 2, +3 = 5
+    assert data["result"]["previous_count"] == 2
+
+
+def test_scale_service_guardrail_clamps_delta():
+    """Scale delta should be clamped to MAX_SCALE_DELTA (default 5)."""
+    raw = execute_remediation("scale_service", "payment-gateway", '{"delta": 20}')
+    data = json.loads(raw)
+    assert data["result"]["status"] == "success"
+    assert data["result"]["clamped"] is True
+    assert data["result"]["delta_applied"] == 5  # clamped from 20 to 5
+    assert data["result"]["new_count"] == 7  # was 2, +5 = 7
+
+
+def test_drain_traffic_remediation():
+    """Drain traffic should mark service as draining and identify upstream callers."""
+    raw = execute_remediation("drain_traffic", "order-service")
+    data = json.loads(raw)
+    assert data["action_executed"] == "drain_traffic"
+    assert data["result"]["status"] == "success"
+    assert data["result"]["traffic_state"] == "draining"
+    assert "api-gateway" in data["result"]["upstream_callers_notified"]
+
+
+def test_drain_traffic_idempotent():
+    """Draining an already-draining service should return already_draining status."""
+    cloud.drain_service_traffic("payment-gateway")
+    raw = execute_remediation("drain_traffic", "payment-gateway")
+    data = json.loads(raw)
+    assert data["result"]["status"] == "already_draining"
+
+
+def test_soak_window_verification_stable():
+    """Multi-checkpoint verification on a healthy cluster should report STABLE."""
+    raw = verify_system_recovery(soak_checks=3)
+    data = json.loads(raw)
+    assert data["all_recovered"] is True
+    assert data["stability"] == "STABLE"
+    assert data["stability_confidence"] == "100.0%"
+    assert data["verification_checkpoints"] == 3
+    assert data["checkpoints_passed"] == 3
+
+
+def test_soak_window_verification_degraded():
+    """Multi-checkpoint verification during active incident should report DEGRADED."""
+    cloud.inject_chaos(ChaosScenario.MEMORY_LEAK_OOM)
+    raw = verify_system_recovery(service_name="payment-gateway", soak_checks=2)
+    data = json.loads(raw)
+    assert data["all_recovered"] is False
+    assert data["stability"] == "DEGRADED"
+    assert data["checkpoints_failed"] == 2
+
+
+def test_blast_radius_scale_action_is_low_risk():
+    """Scaling actions should always be LOW risk since they don't interrupt traffic."""
+    raw = analyze_blast_radius(proposed_action="scale_service", target_service="order-service")
+    data = json.loads(raw)
+    assert data["risk_level"] == "LOW"
+    assert data["safe_to_proceed"] is True
+
+
+def test_abstract_provider_interface():
+    """CloudInfrastructure should be an instance of the abstract CloudProvider."""
+    from strandops.simulator.provider import CloudProvider
+    assert isinstance(cloud, CloudProvider)

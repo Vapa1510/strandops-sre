@@ -73,6 +73,11 @@ def analyze_blast_radius(proposed_action: str, target_service: str) -> str:
         rationale.append(f"Draining traffic from {target} will redirect requests to other instances.")
         rationale.append(f"Upstream callers ({', '.join(dependents) or 'none'}) may see brief latency increase during failover.")
 
+    elif "scale" in action:
+        risk_level = "LOW"
+        rationale.append(f"Scaling {target} adjusts instance count without interrupting active traffic.")
+        rationale.append("Instance count is clamped to [1, 10] with a maximum delta of ±5 per operation.")
+
     else:
         # Unknown action — default to HIGH risk and block
         risk_level = "HIGH"

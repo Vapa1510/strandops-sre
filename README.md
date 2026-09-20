@@ -30,10 +30,10 @@ Most hackathon AI agents are either chatbots that summarize text or dangerous sc
 
 StrandsOps is built on four core engineering principles:
 
-1. **No Hallucinated Actions (Bounded Primitives):** The agent does not execute arbitrary shell scripts. It has strictly typed, safe operational primitives (`quarantine_messages`, `restart_service`, `rollback_config`).
-2. **Mandatory Blast-Radius Gate:** Before touching any service, the agent evaluates the dependency graph. If restarting a service threatens upstream traffic, it flags the risk.
-3. **Closed-Loop Verification (No False Victories):** Typical agents run a command, receive `200 OK`, and declare victory while the queue is still jammed. StrandsOps re-probes live telemetry and will NOT close an incident until error rates hit `0.0%` and latency is within SLA.
-4. **Instant, Zero-Friction Local Testing:** Instead of requiring judges to download 10GB of Docker/LocalStack images that crash on Windows, we built an in-process event-driven cloud simulator. It starts in **0.05 seconds** and realistically models microservice latencies, connection pool leaks, and SQS queues.
+1. **No Hallucinated Actions (Bounded Primitives):** The agent does not execute arbitrary shell scripts. It has strictly typed, safe operational primitives (`quarantine_messages`, `restart_service`, `rollback_config`, `scale_service`, `drain_traffic`).
+2. **Mandatory Blast-Radius Gate:** Before touching any service, the agent evaluates the dependency graph. If restarting a service threatens upstream traffic, it flags the risk and blocks execution.
+3. **Closed-Loop Soak-Window Verification (No False Victories):** Typical agents run a command, receive `200 OK`, and declare victory while the queue is still jammed. StrandsOps runs **multi-checkpoint soak verification** and detects "flapping" services that briefly recover before crashing again.
+4. **Swappable Cloud Backend (Simulator ↔ Live AWS):** An abstract `CloudProvider` interface lets the agent run against an in-process simulator for zero-friction demos, or swap to live AWS CloudWatch/ECS/SQS APIs with a single env var change.
 
 ---
 
@@ -95,7 +95,7 @@ StrandsOps is built on four core engineering principles:
 * **Agent Boundaries:** Giving an agent fewer, well-typed tools makes it 10x more reliable than giving it broad, ambiguous tools.
 
 ### 4. The Execution
-* **17/17 Automated Tests Passing:** Unit and integration tests cover every tool, failure mode, and recovery cycle.
+* **25/25 Automated Tests Passing:** Unit and integration tests cover every tool, failure mode, recovery cycle, scaling guardrails, and soak-window verification.
 * **One-Click Reproducible Demos:** One click in the UI simulates a real outage, and the agent fixes it live in under 30 seconds.
 
 ---
@@ -169,16 +169,17 @@ strandops-sre/
 │   ├── web.py                   # Streamlit Incident Command Center Dashboard
 │   ├── simulator/
 │   │   ├── models.py            # Microservice, Queue, Log, and Incident models
+│   │   ├── provider.py          # Abstract CloudProvider interface (Strategy Pattern)
 │   │   └── cloud.py             # In-process cloud simulation & Chaos Engine
 │   └── tools/
 │       ├── telemetry.py         # inspect_telemetry tool
 │       ├── diagnostics.py       # fetch_error_logs & inspect_queue_health tools
 │       ├── safety.py            # analyze_blast_radius tool
-│       ├── remediation.py       # execute_remediation tool (quarantine, restart, rollback)
-│       ├── verification.py      # verify_system_recovery tool (closed loop)
+│       ├── remediation.py       # execute_remediation tool (quarantine, restart, rollback, scale, drain)
+│       ├── verification.py      # verify_system_recovery tool (soak-window verification)
 │       └── postmortem.py        # generate_incident_postmortem tool
 └── tests/
-    └── test_sre_agent.py        # 12 automated tests (100% passing)
+    └── test_sre_agent.py        # 25 automated tests (100% passing)
 ```
 
 ---

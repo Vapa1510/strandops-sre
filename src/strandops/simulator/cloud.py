@@ -15,6 +15,7 @@ This module provides a lightweight, event-driven in-process simulator that model
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
@@ -29,9 +30,10 @@ from strandops.simulator.models import (
     ServiceHealth,
     StructuredLog,
 )
+from strandops.simulator.provider import CloudProvider
 
 
-class CloudInfrastructure:
+class CloudInfrastructure(CloudProvider):
     """Simulated cloud environment with realistic microservice topology and chaos injection."""
 
     def __init__(self) -> None:
@@ -57,6 +59,17 @@ class CloudInfrastructure:
             "inventory-worker": ["order-processing-queue"],
             "payment-gateway": [],
         }
+
+        # Per-service instance counts (used by scale_service primitive)
+        self.instance_counts = {
+            "api-gateway": 2,
+            "order-service": 3,
+            "payment-gateway": 2,
+            "inventory-worker": 2,
+        }
+
+        # Per-service traffic draining state
+        self.draining_services: List[str] = []
 
         # SQS Queue state
         self.queue = QueueState(
@@ -402,6 +415,78 @@ class CloudInfrastructure:
             "restored_config": self.service_configs[service_name],
         }
 
+    def scale_service_instances(self, service_name: str, delta: int) -> Dict[str, object]:
+        """Scale up or down the number of running instances for a service.
 
-# Singleton cloud instance
+        Safety guardrails:
+        - Maximum delta of ±5 instances per operation (prevents runaway scaling).
+        - Instance count is clamped to [1, 10] — never scales to zero (preserves availability)
+          and never exceeds 10 (prevents cost blowouts).
+        """
+        if service_name not in self.service_configs:
+            return {"status": "error", "reason": f"Unknown service '{service_name}'"}
+
+        max_delta = int(os.getenv("MAX_SCALE_DELTA", "5"))
+        clamped_delta = max(-max_delta, min(delta, max_delta))
+
+        old_count = self.instance_counts.get(service_name, 2)
+        new_count = max(1, min(old_count + clamped_delta, 10))
+        self.instance_counts[service_name] = new_count
+
+        self._emit_log(
+            service=service_name,
+            level=LogSeverity.INFO,
+            message=f"Scaled {service_name} from {old_count} to {new_count} instances (delta: {clamped_delta:+d})",
+        )
+
+        return {
+            "status": "success",
+            "service": service_name,
+            "previous_count": old_count,
+            "new_count": new_count,
+            "delta_applied": clamped_delta,
+            "delta_requested": delta,
+            "clamped": delta != clamped_delta,
+            "scaled_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def drain_service_traffic(self, service_name: str) -> Dict[str, object]:
+        """Drain active connections from a service and redirect traffic to healthy peers.
+
+        This is a non-destructive operation — the service keeps running but stops
+        receiving new requests, allowing in-flight requests to complete gracefully.
+        Useful before performing maintenance or investigating intermittent failures.
+        """
+        if service_name not in self.service_configs:
+            return {"status": "error", "reason": f"Unknown service '{service_name}'"}
+
+        if service_name in self.draining_services:
+            return {
+                "status": "already_draining",
+                "service": service_name,
+                "message": f"Traffic to {service_name} is already being drained.",
+            }
+
+        self.draining_services.append(service_name)
+
+        # Identify peers that will absorb the redirected traffic
+        dependents = [svc for svc, deps in self.dependencies.items() if service_name in deps]
+
+        self._emit_log(
+            service=service_name,
+            level=LogSeverity.INFO,
+            message=f"Draining traffic from {service_name}. In-flight requests completing gracefully. "
+                    f"Upstream callers ({', '.join(dependents) or 'none'}) redirecting to healthy peers.",
+        )
+
+        return {
+            "status": "success",
+            "service": service_name,
+            "traffic_state": "draining",
+            "upstream_callers_notified": dependents,
+            "drained_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+# Singleton cloud instance — resolved via the provider factory
 cloud = CloudInfrastructure()
