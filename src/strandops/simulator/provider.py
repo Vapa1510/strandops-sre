@@ -97,13 +97,20 @@ class CloudProvider(ABC):
         raise NotImplementedError("Chaos injection is only available on the simulated backend.")
 
 
+_provider_instance: Optional[CloudProvider] = None
+
+
 def get_cloud_provider() -> CloudProvider:
-    """Factory that returns the configured cloud backend.
+    """Factory that returns the configured cloud backend singleton.
 
     Reads CLOUD_BACKEND from the environment:
         'simulator' (default) — in-process event-driven simulator
         'aws'                 — live AWS CloudWatch / ECS / SQS (future)
     """
+    global _provider_instance
+    if _provider_instance is not None:
+        return _provider_instance
+
     backend = os.getenv("CLOUD_BACKEND", "simulator").lower()
 
     if backend == "aws":
@@ -114,6 +121,7 @@ def get_cloud_provider() -> CloudProvider:
             "Set CLOUD_BACKEND=simulator (default) for now."
         )
 
-    # Default: in-process simulator
-    from strandops.simulator.cloud import CloudInfrastructure
-    return CloudInfrastructure()
+    # Default: canonical in-process simulator singleton
+    from strandops.simulator.cloud import cloud
+    _provider_instance = cloud
+    return _provider_instance

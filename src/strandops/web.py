@@ -188,17 +188,33 @@ with tab_chat:
 
         with st.chat_message("assistant"):
             with st.spinner("StrandsOps analyzing telemetry, correlating error logs & checking blast radius..."):
-                agent = get_agent()
-                response = agent(prompt)
+                try:
+                    agent = get_agent()
+                    response = agent(prompt)
 
-                # Extract response text
-                reply = ""
-                if hasattr(response, "message") and hasattr(response.message, "content"):
-                    for block in response.message.content:
-                        if hasattr(block, "text"):
-                            reply += block.text
-                if not reply:
-                    reply = str(response)
+                    # Extract response text
+                    reply = ""
+                    if hasattr(response, "message") and hasattr(response.message, "content"):
+                        for block in response.message.content:
+                            if hasattr(block, "text"):
+                                reply += block.text
+                    if not reply:
+                        reply = str(response)
+                except Exception as e:
+                    err_msg = str(e)
+                    err_type = type(e).__name__
+                    if "NoCredentialsError" in err_type or "credentials" in err_msg.lower():
+                        reply = (
+                            "⚠️ **Amazon Bedrock Credentials Required**\n\n"
+                            "The autonomous agent requires AWS credentials to invoke Claude 3.5 Sonnet on Amazon Bedrock.\n\n"
+                            "**How to connect:**\n"
+                            "1. Open the left sidebar 👈 and enter your **AWS Access Key ID** & **Secret Access Key** under **AWS Credentials**\n"
+                            "2. Click **Connect to Live Bedrock**\n"
+                            "3. Or edit `.env` in your project root with your AWS keys\n"
+                            "4. Or set `MODEL_PROVIDER=ollama` in `.env` for free offline local testing."
+                        )
+                    else:
+                        reply = f"❌ **Agent Execution Error ({err_type})**: {err_msg}"
 
                 st.markdown(reply)
                 st.session_state.messages.append({"role": "assistant", "content": reply})

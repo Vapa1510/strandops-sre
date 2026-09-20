@@ -32,7 +32,7 @@ def execute_remediation(action_type: str, target: str, parameters_json: str = "{
         parameters_json: Optional JSON string of parameters (e.g. '{"message_ids": ["msg-bad-881"]}' or '{"delta": 2}').
     """
     action = action_type.strip().lower()
-    tgt = target.strip()
+    tgt = target.strip().lower().replace(" ", "-").replace("_", "-")
 
     params = {}
     if parameters_json:

@@ -319,3 +319,46 @@ def test_abstract_provider_interface():
     """CloudInfrastructure should be an instance of the abstract CloudProvider."""
     from strandops.simulator.provider import CloudProvider
     assert isinstance(cloud, CloudProvider)
+
+
+def test_provider_factory_returns_singleton():
+    """get_cloud_provider() must return the canonical singleton instance."""
+    from strandops.simulator.provider import get_cloud_provider
+    provider = get_cloud_provider()
+    assert provider is cloud
+
+
+def test_remediation_target_normalization():
+    """Remediation must handle varied target naming formats (spaces, underscores, title case)."""
+    for formatted_target in ["Payment Gateway", "payment_gateway", "Payment-Gateway"]:
+        res_raw = execute_remediation("restart_service", formatted_target)
+        res = json.loads(res_raw)
+        assert res["result"]["status"] == "success"
+        assert res["result"]["service"] == "payment-gateway"
+
+
+def test_verification_nonexistent_service_returns_error():
+    """Verifying a non-existent service must return error and not declare false success."""
+    raw = verify_system_recovery(service_name="nonexistent-microservice")
+    data = json.loads(raw)
+    assert data["all_recovered"] is False
+    assert data["stability"] == "ERROR"
+    assert "Cannot verify recovery" in data["verdict"]
+
+
+def test_safety_gate_target_normalization():
+    """Safety gate must normalize names with spaces/underscores so order-service is flagged HIGH."""
+    raw = analyze_blast_radius(proposed_action="restart_service", target_service="Order Service")
+    data = json.loads(raw)
+    assert data["risk_level"] == "HIGH"
+    assert data["target"] == "order-service"
+
+
+def test_scale_and_drain_recorded_in_incident_audit():
+    """Scaling and draining operations must be recorded in the active incident audit trail."""
+    inc = cloud.inject_chaos(ChaosScenario.SQS_POISON_PILL)
+    execute_remediation("scale_service", "inventory-worker", '{"delta": 2}')
+    execute_remediation("drain_traffic", "inventory-worker")
+    actions = inc.remediation_actions_taken
+    assert any("Scaled" in a for a in actions)
+    assert any("Drained" in a for a in actions)

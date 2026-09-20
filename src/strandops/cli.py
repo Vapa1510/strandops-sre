@@ -137,7 +137,15 @@ def main() -> None:
                 padding=(1, 2),
             ))
         except Exception as e:
-            console.print(f"[bold red]Execution error:[/bold red] {e}")
+            err_type = type(e).__name__
+            if "NoCredentialsError" in err_type or "credentials" in str(e).lower():
+                console.print(
+                    "[bold yellow]⚠️  AWS Bedrock Credentials Required:[/bold yellow] "
+                    "Configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env, "
+                    "or set MODEL_PROVIDER=ollama for offline testing."
+                )
+            else:
+                console.print(f"[bold red]Execution error ({err_type}):[/bold red] {e}")
 
 
 if __name__ == "__main__":

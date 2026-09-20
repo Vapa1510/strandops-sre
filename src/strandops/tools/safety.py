@@ -24,7 +24,7 @@ def analyze_blast_radius(proposed_action: str, target_service: str) -> str:
         target_service: The service or resource targeted (e.g. 'payment-gateway',
                         'order-processing-queue', 'api-gateway', 'order-service').
     """
-    target = target_service.strip().lower()
+    target = target_service.strip().lower().replace(" ", "-").replace("_", "-")
     topology = cloud.get_topology()
 
     # Find services that depend directly on this target

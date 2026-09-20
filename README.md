@@ -95,7 +95,7 @@ StrandsOps is built on four core engineering principles:
 * **Agent Boundaries:** Giving an agent fewer, well-typed tools makes it 10x more reliable than giving it broad, ambiguous tools.
 
 ### 4. The Execution
-* **25/25 Automated Tests Passing:** Unit and integration tests cover every tool, failure mode, recovery cycle, scaling guardrails, and soak-window verification.
+* **30/30 Automated Tests Passing:** Unit and integration tests cover every tool, failure mode, recovery cycle, scaling guardrails, naming normalization, and soak-window verification.
 * **One-Click Reproducible Demos:** One click in the UI simulates a real outage, and the agent fixes it live in under 30 seconds.
 
 ---
@@ -179,7 +179,7 @@ strandops-sre/
 │       ├── verification.py      # verify_system_recovery tool (soak-window verification)
 │       └── postmortem.py        # generate_incident_postmortem tool
 └── tests/
-    └── test_sre_agent.py        # 25 automated tests (100% passing)
+    └── test_sre_agent.py        # 30 automated tests (100% passing)
 ```
 
 ---

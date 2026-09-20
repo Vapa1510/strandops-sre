@@ -31,10 +31,29 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1) -> str:
         soak_checks: Number of verification checkpoints (1-5). Higher values catch flapping
                      services but take longer. Default: 1 for fast feedback in demos.
     """
-    target = service_name.strip() if service_name else None
+    raw = service_name.strip().lower().replace(" ", "-").replace("_", "-") if service_name else ""
+    target = None if raw in ("", "all", "none", "null") else raw
 
     # Clamp soak_checks to a safe range to prevent LLM from requesting excessive loops
     num_checks = max(1, min(int(soak_checks), 5))
+
+    # Defensive check: if a specific service was requested, ensure it actually exists
+    initial_check = cloud.get_telemetry(target)
+    if target and not initial_check:
+        return json.dumps({
+            "all_recovered": False,
+            "all_systems_recovered": False,
+            "stability": "ERROR",
+            "stability_confidence": "0.0%",
+            "verification_checkpoints": 0,
+            "checkpoints_passed": 0,
+            "checkpoints_failed": num_checks,
+            "checkpoint_details": [],
+            "queue_healthy": False,
+            "healthy_services": [],
+            "unrecovered_services": [{"service": service_name, "error": f"Unknown service '{service_name}'"}],
+            "verdict": f"❌ ERROR: Cannot verify recovery — service '{service_name}' does not exist in cluster topology.",
+        }, indent=2)
 
     # Collect health snapshots across multiple checkpoints
     checkpoint_results = []
@@ -46,6 +65,9 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1) -> str:
             time.sleep(0.5)  # 500ms between checks (simulated environment; real AWS would use 15-30s)
 
         snapshots = cloud.get_telemetry(target)
+        if not snapshots:
+            all_checkpoints_healthy = False
+            break
 
         failing_services = []
         healthy_services = []

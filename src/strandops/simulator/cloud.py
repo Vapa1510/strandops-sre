@@ -12,13 +12,10 @@ This module provides a lightweight, event-driven in-process simulator that model
 - Real-time telemetry: P50/P95/P99 latency, error rates, RPS, and memory profiles
 - Real-world failure modes: poison pills, connection leaks, bad deployments
 """
-from __future__ import annotations
-
-import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from strandops.simulator.models import (
     ChaosScenario,
@@ -31,6 +28,13 @@ from strandops.simulator.models import (
     StructuredLog,
 )
 from strandops.simulator.provider import CloudProvider
+
+
+def _normalize_name(name: Optional[str]) -> str:
+    """Normalize service or queue name (strip, lower, convert spaces and underscores to hyphens)."""
+    if not name:
+        return ""
+    return name.strip().lower().replace(" ", "-").replace("_", "-")
 
 
 class CloudInfrastructure(CloudProvider):
@@ -231,7 +235,8 @@ class CloudInfrastructure(CloudProvider):
     def get_telemetry(self, service_name: Optional[str] = None) -> List[MetricSnapshot]:
         """Calculates point-in-time metrics based on current cluster state."""
         snapshots = []
-        services = [service_name] if service_name else list(self.service_configs.keys())
+        normalized_target = _normalize_name(service_name) if service_name else None
+        services = [normalized_target] if normalized_target else list(self.service_configs.keys())
 
         for svc in services:
             if svc not in self.service_configs:
@@ -274,6 +279,12 @@ class CloudInfrastructure(CloudProvider):
                 err_rate = 68.0
                 health = ServiceHealth.CRITICAL
 
+            # If traffic is being drained from this service, reflect 0 RPS
+            if svc in self.draining_services:
+                rps = 0.0
+                if health == ServiceHealth.HEALTHY:
+                    health = ServiceHealth.DEGRADED
+
             snapshots.append(
                 MetricSnapshot(
                     service_name=svc,
@@ -292,7 +303,8 @@ class CloudInfrastructure(CloudProvider):
 
     def get_logs(self, service_name: Optional[str] = None, limit: int = 20) -> List[StructuredLog]:
         """Fetch structured log stream filtered by service."""
-        filtered = [l for l in self.logs if (service_name is None or l.service == service_name)]
+        target = _normalize_name(service_name) if service_name else None
+        filtered = [l for l in self.logs if (target is None or l.service == target)]
         return filtered[-limit:]
 
     def get_queue_state(self) -> QueueState:
@@ -309,7 +321,8 @@ class CloudInfrastructure(CloudProvider):
 
     def quarantine_queue_messages(self, queue_name: str, message_ids: List[str]) -> Dict[str, object]:
         """Moves corrupted poison pill messages to the DLQ to unblock processing."""
-        if self.queue.queue_name != queue_name:
+        normalized_q = _normalize_name(queue_name)
+        if _normalize_name(self.queue.queue_name) != normalized_q:
             return {"status": "error", "reason": f"Unknown queue '{queue_name}'"}
 
         quarantined = []
@@ -346,52 +359,54 @@ class CloudInfrastructure(CloudProvider):
 
     def restart_service_instance(self, service_name: str) -> Dict[str, object]:
         """Gracefully reboots a microservice container, flushing leaked memory and hung pools."""
-        if service_name not in self.service_configs:
+        svc = _normalize_name(service_name)
+        if svc not in self.service_configs:
             return {"status": "error", "reason": f"Unknown service '{service_name}'"}
 
         self._emit_log(
-            service=service_name,
+            service=svc,
             level=LogSeverity.INFO,
-            message=f"Gracefully rebooting container instance for '{service_name}'",
+            message=f"Gracefully rebooting container instance for '{svc}'",
         )
 
         # Resolves memory leaks and pool exhaustion
-        if self.active_chaos == ChaosScenario.MEMORY_LEAK_OOM and service_name == "payment-gateway":
+        if self.active_chaos == ChaosScenario.MEMORY_LEAK_OOM and svc == "payment-gateway":
             self.active_chaos = None
             if self.active_incident:
                 self.active_incident.status = "RESOLVED"
                 self.active_incident.resolved_at = datetime.now(timezone.utc)
                 self.active_incident.remediation_actions_taken.append(
-                    f"Restarted '{service_name}' container; reset memory pool and flushed unclosed HTTP connections."
+                    f"Restarted '{svc}' container; reset memory pool and flushed unclosed HTTP connections."
                 )
-        elif self.active_chaos == ChaosScenario.DB_CONNECTION_STARVATION and service_name == "order-service":
+        elif self.active_chaos == ChaosScenario.DB_CONNECTION_STARVATION and svc == "order-service":
             self.active_chaos = None
             if self.active_incident:
                 self.active_incident.status = "RESOLVED"
                 self.active_incident.resolved_at = datetime.now(timezone.utc)
                 self.active_incident.remediation_actions_taken.append(
-                    f"Restarted '{service_name}' container; flushed hung database transactions and reset connection pool (50/50 ready)."
+                    f"Restarted '{svc}' container; flushed hung database transactions and reset connection pool (50/50 ready)."
                 )
 
         self._emit_log(
-            service=service_name,
+            service=svc,
             level=LogSeverity.INFO,
-            message=f"Service '{service_name}' restarted successfully. Memory: 215MB, Connections: 0/100",
+            message=f"Service '{svc}' restarted successfully. Memory: 215MB, Connections: 0/100",
         )
 
         return {
             "status": "success",
-            "service": service_name,
+            "service": svc,
             "restarted_at": datetime.now(timezone.utc).isoformat(),
             "new_state": "running (healthy)",
         }
 
     def rollback_service_config(self, service_name: str, target_version: str = "previous") -> Dict[str, object]:
         """Rolls back a service configuration or deployment tag to the last known good baseline."""
-        if service_name not in self.service_configs:
+        svc = _normalize_name(service_name)
+        if svc not in self.service_configs:
             return {"status": "error", "reason": f"Unknown service '{service_name}'"}
 
-        if self.active_chaos == ChaosScenario.RATE_LIMIT_MISCONFIG and service_name == "api-gateway":
+        if self.active_chaos == ChaosScenario.RATE_LIMIT_MISCONFIG and svc == "api-gateway":
             self.service_configs["api-gateway"]["rate_limit_rps"] = 500
             self.service_configs["api-gateway"]["version"] = "v1.8.2"
             self.active_chaos = None
@@ -399,20 +414,20 @@ class CloudInfrastructure(CloudProvider):
                 self.active_incident.status = "RESOLVED"
                 self.active_incident.resolved_at = datetime.now(timezone.utc)
                 self.active_incident.remediation_actions_taken.append(
-                    f"Rolled back {service_name} from v1.8.3 to v1.8.2; restored rate_limit_rps=500"
+                    f"Rolled back {svc} from v1.8.3 to v1.8.2; restored rate_limit_rps=500"
                 )
 
         self._emit_log(
-            service=service_name,
+            service=svc,
             level=LogSeverity.INFO,
-            message=f"Config rolled back to stable baseline on {service_name}. Rate limits restored.",
+            message=f"Config rolled back to stable baseline on {svc}. Rate limits restored.",
         )
 
         return {
             "status": "success",
-            "service": service_name,
-            "active_version": self.service_configs[service_name]["version"],
-            "restored_config": self.service_configs[service_name],
+            "service": svc,
+            "active_version": self.service_configs[svc]["version"],
+            "restored_config": self.service_configs[svc],
         }
 
     def scale_service_instances(self, service_name: str, delta: int) -> Dict[str, object]:
@@ -423,25 +438,31 @@ class CloudInfrastructure(CloudProvider):
         - Instance count is clamped to [1, 10] — never scales to zero (preserves availability)
           and never exceeds 10 (prevents cost blowouts).
         """
-        if service_name not in self.service_configs:
+        svc = _normalize_name(service_name)
+        if svc not in self.service_configs:
             return {"status": "error", "reason": f"Unknown service '{service_name}'"}
 
         max_delta = int(os.getenv("MAX_SCALE_DELTA", "5"))
         clamped_delta = max(-max_delta, min(delta, max_delta))
 
-        old_count = self.instance_counts.get(service_name, 2)
+        old_count = self.instance_counts.get(svc, 2)
         new_count = max(1, min(old_count + clamped_delta, 10))
-        self.instance_counts[service_name] = new_count
+        self.instance_counts[svc] = new_count
+
+        if self.active_incident:
+            self.active_incident.remediation_actions_taken.append(
+                f"Scaled '{svc}' instances from {old_count} to {new_count} (delta: {clamped_delta:+d})"
+            )
 
         self._emit_log(
-            service=service_name,
+            service=svc,
             level=LogSeverity.INFO,
-            message=f"Scaled {service_name} from {old_count} to {new_count} instances (delta: {clamped_delta:+d})",
+            message=f"Scaled {svc} from {old_count} to {new_count} instances (delta: {clamped_delta:+d})",
         )
 
         return {
             "status": "success",
-            "service": service_name,
+            "service": svc,
             "previous_count": old_count,
             "new_count": new_count,
             "delta_applied": clamped_delta,
@@ -457,31 +478,37 @@ class CloudInfrastructure(CloudProvider):
         receiving new requests, allowing in-flight requests to complete gracefully.
         Useful before performing maintenance or investigating intermittent failures.
         """
-        if service_name not in self.service_configs:
+        svc = _normalize_name(service_name)
+        if svc not in self.service_configs:
             return {"status": "error", "reason": f"Unknown service '{service_name}'"}
 
-        if service_name in self.draining_services:
+        if svc in self.draining_services:
             return {
                 "status": "already_draining",
-                "service": service_name,
-                "message": f"Traffic to {service_name} is already being drained.",
+                "service": svc,
+                "message": f"Traffic to {svc} is already being drained.",
             }
 
-        self.draining_services.append(service_name)
+        self.draining_services.append(svc)
 
         # Identify peers that will absorb the redirected traffic
-        dependents = [svc for svc, deps in self.dependencies.items() if service_name in deps]
+        dependents = [s for s, deps in self.dependencies.items() if svc in deps]
+
+        if self.active_incident:
+            self.active_incident.remediation_actions_taken.append(
+                f"Drained traffic from '{svc}' gracefully (redirecting upstream callers: {', '.join(dependents) or 'none'})"
+            )
 
         self._emit_log(
-            service=service_name,
+            service=svc,
             level=LogSeverity.INFO,
-            message=f"Draining traffic from {service_name}. In-flight requests completing gracefully. "
+            message=f"Draining traffic from {svc}. In-flight requests completing gracefully. "
                     f"Upstream callers ({', '.join(dependents) or 'none'}) redirecting to healthy peers.",
         )
 
         return {
             "status": "success",
-            "service": service_name,
+            "service": svc,
             "traffic_state": "draining",
             "upstream_callers_notified": dependents,
             "drained_at": datetime.now(timezone.utc).isoformat(),
