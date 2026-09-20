@@ -235,7 +235,8 @@ class CloudInfrastructure(CloudProvider):
     def get_telemetry(self, service_name: Optional[str] = None) -> List[MetricSnapshot]:
         """Calculates point-in-time metrics based on current cluster state."""
         snapshots = []
-        normalized_target = _normalize_name(service_name) if service_name else None
+        raw_norm = _normalize_name(service_name) if service_name else None
+        normalized_target = None if raw_norm in ("", "all", "none", "null", "*") else raw_norm
         services = [normalized_target] if normalized_target else list(self.service_configs.keys())
 
         for svc in services:
@@ -303,7 +304,8 @@ class CloudInfrastructure(CloudProvider):
 
     def get_logs(self, service_name: Optional[str] = None, limit: int = 20) -> List[StructuredLog]:
         """Fetch structured log stream filtered by service."""
-        target = _normalize_name(service_name) if service_name else None
+        raw_norm = _normalize_name(service_name) if service_name else None
+        target = None if raw_norm in ("", "all", "none", "null", "*") else raw_norm
         filtered = [l for l in self.logs if (target is None or l.service == target)]
         return filtered[-limit:]
 

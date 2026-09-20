@@ -22,7 +22,7 @@ def fetch_error_logs(service_name: str = "", limit: int = 10) -> str:
                       'payment-gateway', 'order-service', 'api-gateway').
         limit: Maximum number of recent log entries to retrieve (1 to 50).
     """
-    raw = service_name.strip().lower().replace(" ", "-") if service_name else ""
+    raw = service_name.strip().lower().replace(" ", "-").replace("_", "-") if service_name else ""
     target = None if raw in ("", "all", "none", "null") else raw
     limit = max(1, min(limit, 50))
     logs = cloud.get_logs(service_name=target, limit=limit)
@@ -58,8 +58,8 @@ def inspect_queue_health(queue_name: str = "order-processing-queue") -> str:
         queue_name: The name of the SQS queue to inspect (default: 'order-processing-queue').
     """
     q = cloud.get_queue_state()
-    normalized = queue_name.strip().lower()
-    if q.queue_name.lower() != normalized:
+    normalized = queue_name.strip().lower().replace(" ", "-").replace("_", "-")
+    if q.queue_name.lower().replace(" ", "-").replace("_", "-") != normalized:
         return json.dumps({
             "status": "error",
             "message": f"Queue '{queue_name}' not found. Available: ['{q.queue_name}']"

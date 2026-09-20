@@ -95,7 +95,7 @@ StrandsOps is built on four core engineering principles:
 * **Agent Boundaries:** Giving an agent fewer, well-typed tools makes it 10x more reliable than giving it broad, ambiguous tools.
 
 ### 4. The Execution
-* **40/40 Automated Tests Passing:** Unit and integration tests cover every tool, failure mode, recovery cycle, Pluggable Action Registry plugins, semantic caching, live AWS adapter structure, and mathematical soak-window verification.
+* **140/140 Automated Tests Passing:** Comprehensive test suites across 6 modules cover simulator baseline invariants, all 4 chaos failure modes, SRE tools, blast-radius safety gates, the Pluggable Action Registry (all 8 plugins), semantic incident caching, live AWS adapter contracts, and mathematical soak-window verification.
 * **One-Click Reproducible Demos:** One click in the UI simulates a real outage, and the agent fixes it live in under 30 seconds.
 
 ---
@@ -184,8 +184,7 @@ strandops-sre/
 │       ├── remediation.py       # execute_remediation tool (dispatches via ActionRegistry)
 │       ├── verification.py      # verify_system_recovery tool (soak-window verification)
 │       └── postmortem.py        # generate_incident_postmortem tool
-└── tests/
-    └── test_sre_agent.py        # 40 automated tests (100% passing)
+└── tests/                       # 140 automated tests across 6 modules (100% passing)
 ```
 
 ---
