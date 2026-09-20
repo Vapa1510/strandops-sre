@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Wrench, Play, ShieldAlert, CheckCircle, XCircle } from "lucide-react";
+import { Wrench, Play, CheckCircle, XCircle } from "lucide-react";
 import { ServiceMetrics } from "@/lib/engine";
 
 interface ActionDrawerProps {
@@ -10,17 +10,31 @@ interface ActionDrawerProps {
   loading: boolean;
 }
 
-export function ActionDrawer({ services, onExecuteAction, loading }: ActionDrawerProps) {
+export function ActionDrawer({ onExecuteAction, loading }: ActionDrawerProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>("order-service");
   const [selectedAction, setSelectedAction] = useState<string>("flush_connection_pool");
-  const [actionResult, setActionResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [actionResult, setActionResult] = useState<{ success: boolean; message: string } | null>(
+    null
+  );
 
   const actions = [
     { id: "flush_connection_pool", label: "Flush Connection Pool", target: "order-service" },
-    { id: "rollback_deployment", label: "Rollback Deployment to Stable (v2.4.1)", target: "api-gateway" },
-    { id: "isolate_poison_pill", label: "Isolate SQS Poison Pill", target: "order-processing-queue" },
+    {
+      id: "rollback_deployment",
+      label: "Rollback Deployment to Stable (v2.4.1)",
+      target: "api-gateway",
+    },
+    {
+      id: "isolate_poison_pill",
+      label: "Isolate SQS Poison Pill",
+      target: "order-processing-queue",
+    },
     { id: "purge_dlq", label: "Purge Dead-Letter Queue (DLQ)", target: "order-processing-dlq" },
-    { id: "reset_circuit_breaker", label: "Reset Circuit Breaker (to CLOSED)", target: "order-service" },
+    {
+      id: "reset_circuit_breaker",
+      label: "Reset Circuit Breaker (to CLOSED)",
+      target: "order-service",
+    },
     { id: "scale_replicas", label: "Scale Service Replicas (+2)", target: "inventory-worker" },
     { id: "restart_service", label: "Graceful Container Restart", target: "api-gateway" },
   ];
@@ -31,24 +45,27 @@ export function ActionDrawer({ services, onExecuteAction, loading }: ActionDrawe
     if (res) {
       setActionResult({
         success: res.success,
-        message: res.message || (res.success ? "Action executed successfully." : "Action blocked by safety policy."),
+        message:
+          res.message ||
+          (res.success ? "Action executed successfully." : "Action blocked by safety policy."),
       });
     }
   };
 
   return (
-    <div className="rounded-xl border border-white/10 bg-slate-950/60 p-5 backdrop-blur-md">
-      <div className="flex items-center gap-2 mb-4">
-        <Wrench className="w-5 h-5 text-amber-400" />
-        <h2 className="text-base font-bold text-slate-100 font-mono tracking-tight">
-          Manual SRE Runbook Dispatcher
+    <div className="glass-panel p-5">
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10">
+          <Wrench className="w-4 h-4 text-amber-400" />
+        </div>
+        <h2 className="font-display text-base font-bold text-white tracking-tight">
+          Manual runbook
         </h2>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-        {/* Action Selector */}
         <div>
-          <label className="block text-xs font-mono text-slate-400 mb-1.5">Remediation Primitive</label>
+          <label className="block text-xs text-slate-400 mb-1.5">Action</label>
           <select
             value={selectedAction}
             onChange={(e) => {
@@ -57,7 +74,7 @@ export function ActionDrawer({ services, onExecuteAction, loading }: ActionDrawe
               const found = actions.find((a) => a.id === act);
               if (found) setSelectedTarget(found.target);
             }}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500"
+            className="input-glass font-mono"
           >
             {actions.map((act) => (
               <option key={act.id} value={act.id}>
@@ -67,34 +84,31 @@ export function ActionDrawer({ services, onExecuteAction, loading }: ActionDrawe
           </select>
         </div>
 
-        {/* Target Selector */}
         <div>
-          <label className="block text-xs font-mono text-slate-400 mb-1.5">Target Resource</label>
+          <label className="block text-xs text-slate-400 mb-1.5">Target resource</label>
           <input
             type="text"
             value={selectedTarget}
             onChange={(e) => setSelectedTarget(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500"
+            className="input-glass font-mono"
           />
         </div>
 
-        {/* Dispatch Button */}
         <div className="flex items-end">
           <button
             onClick={handleExecute}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-mono text-xs font-semibold shadow-neon-amber transition-all disabled:opacity-50"
+            className="w-full btn-brand !bg-gradient-to-r !from-amber-500 !to-amber-600 hover:!from-amber-400 hover:!to-amber-500 !shadow-[0_0_24px_-6px_rgba(245,158,11,0.55)] !text-xs"
           >
             <Play className="w-3.5 h-3.5" />
-            <span>Execute Primitive</span>
+            <span>Run action</span>
           </button>
         </div>
       </div>
 
-      {/* Execution Feedback */}
       {actionResult && (
         <div
-          className={`p-3 rounded-lg border flex items-center gap-2 font-mono text-xs ${
+          className={`p-3 rounded-xl border flex items-center gap-2 text-xs ${
             actionResult.success
               ? "border-emerald-500/40 bg-emerald-950/30 text-emerald-300"
               : "border-rose-500/40 bg-rose-950/30 text-rose-300"
@@ -105,7 +119,7 @@ export function ActionDrawer({ services, onExecuteAction, loading }: ActionDrawe
           ) : (
             <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
           )}
-          <span>{actionResult.message}</span>
+          <span className="font-mono">{actionResult.message}</span>
         </div>
       )}
     </div>

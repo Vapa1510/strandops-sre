@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Header } from "@/components/Header";
+import { HeroStrip } from "@/components/HeroStrip";
 import { TopologyMap } from "@/components/TopologyMap";
 import { ChaosDeck } from "@/components/ChaosDeck";
 import { AgentConsole } from "@/components/AgentConsole";
@@ -18,8 +19,8 @@ export default function Home() {
   const [isPostmortemOpen, setIsPostmortemOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [selectedService, setSelectedService] = useState<string | null>(null);
+  const chaosRef = useRef<HTMLDivElement>(null);
 
-  // Fetch live telemetry polling
   const fetchTelemetry = useCallback(async () => {
     try {
       const res = await fetch("/api/telemetry");
@@ -41,7 +42,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchTelemetry]);
 
-  // Inject Chaos Scenario
   const handleInjectChaos = async (
     scenario: "poison_pill" | "connection_leak" | "circuit_breaker_trip" | "bad_deployment"
   ) => {
@@ -65,14 +65,15 @@ export default function Home() {
     }
   };
 
-  // Autonomous Heal via Bedrock Agent
   const handleAutonomousHeal = async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: "Autonomous heal active cluster incident" }),
+        body: JSON.stringify({
+          query: "Investigate the active incident, check blast radius, fix, and re-verify",
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -84,13 +85,12 @@ export default function Home() {
         await fetchTelemetry();
       }
     } catch (err) {
-      console.error("Autonomous heal failed:", err);
+      console.error("Triage failed:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Reset Cluster
   const handleReset = async () => {
     setLoading(true);
     try {
@@ -113,7 +113,6 @@ export default function Home() {
     }
   };
 
-  // Submit Natural Language Query to SRE Agent
   const handleSubmitQuery = async (query: string) => {
     setLoading(true);
     try {
@@ -138,7 +137,6 @@ export default function Home() {
     }
   };
 
-  // Manual Remediate Action
   const handleExecuteAction = async (action: string, target: string) => {
     try {
       const res = await fetch("/api/remediate", {
@@ -158,26 +156,29 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
-      {/* Header */}
-      <Header
-        clusterState={clusterState}
-        onReset={handleReset}
-        loading={loading}
-      />
+    <div className="min-h-screen flex flex-col">
+      <Header clusterState={clusterState} onReset={handleReset} loading={loading} />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* Chaos Engineering Deck */}
-        <ChaosDeck
-          onInjectChaos={handleInjectChaos}
-          onAutonomousHeal={handleAutonomousHeal}
-          onReset={handleReset}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pb-10 space-y-6">
+        <HeroStrip
+          clusterState={clusterState}
+          onRunTriage={handleAutonomousHeal}
+          onScrollToChaos={() =>
+            chaosRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
           loading={loading}
-          hasActiveIncident={clusterState?.status === "INCIDENT"}
         />
 
-        {/* Microservice Topology Canvas */}
+        <div ref={chaosRef}>
+          <ChaosDeck
+            onInjectChaos={handleInjectChaos}
+            onAutonomousHeal={handleAutonomousHeal}
+            onReset={handleReset}
+            loading={loading}
+            hasActiveIncident={clusterState?.status === "INCIDENT"}
+          />
+        </div>
+
         {clusterState && (
           <TopologyMap
             services={clusterState.services}
@@ -187,7 +188,6 @@ export default function Home() {
           />
         )}
 
-        {/* Grid: Autonomous Reasoning Console + Live SLA Table */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-6">
             <AgentConsole
@@ -213,16 +213,15 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Postmortem Modal */}
       <PostmortemModal
         isOpen={isPostmortemOpen}
         onClose={() => setIsPostmortemOpen(false)}
         markdown={postmortemMarkdown}
       />
 
-      {/* Footer */}
-      <footer className="border-t border-white/10 bg-slate-950/80 px-4 py-3 text-center text-xs font-mono text-slate-500">
-        StrandsOps SRE &bull; Amazon Bedrock Claude 3.5 Sonnet &bull; AWS Account ID 3792-6468-7588 &bull; WeMakeDevs Bharat Builds 2026
+      <footer className="border-t border-brand/15 bg-[#050a14]/80 backdrop-blur-md px-4 py-4 text-center text-xs text-slate-500">
+        StrandsOps SRE · On-call incident helper · AWS Account 3792-6468-7588 · WeMakeDevs Bharat
+        Builds 2026
       </footer>
     </div>
   );

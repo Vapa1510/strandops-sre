@@ -14,7 +14,7 @@ This script provides the exact sequence to demonstrate **StrandsOps** for your h
    *Dashboard opens at `http://localhost:8501`.*
 
 2. **Verify Baseline State:**
-   - Notice the green indicator: `🟢 ALL SYSTEMS OPERATIONAL`.
+   - Notice the green indicator: metrics within SLA / all clear.
    - Latency chart shows healthy sub-50ms bars across all 4 services.
    - SQS Queue shows healthy visible message depth.
 
@@ -35,8 +35,8 @@ This script provides the exact sequence to demonstrate **StrandsOps** for your h
   > *"Critical alert: SQS queue and inventory workers are failing. Investigate root cause, ensure safe blast radius, remediate, and verify recovery."*
 * Hit **Enter**.
 
-### Step 3: Watch Autonomous Reasoning in Real Time
-The agent executes the full SRE lifecycle:
+### Step 3: Watch triage in real time
+The helper runs the full SRE loop:
 1. **🔍 Telemetry Inspection:**
    `inspect_telemetry` reports `inventory-worker` error rate at 84.5% and P99 latency at 480ms.
 2. **📜 Log Diagnostics:**
@@ -47,16 +47,16 @@ The agent executes the full SRE lifecycle:
    `analyze_blast_radius` confirms quarantining these 3 messages is **SAFE** and will not drop valid consumer orders.
 5. **⚡ Targeted Remediation:**
    `execute_remediation` moves the 3 poison pills to the Dead-Letter Queue.
-6. **✅ Closed-Loop Verification:**
-   `verify_system_recovery` double-checks telemetry: Error rate drops back to **0.0%**, P99 latency returns to **< 50ms**, and queue backlog drains.
+6. **✅ Soak verification:**
+   `verify_system_recovery` re-checks telemetry: error rate back within SLA (≤ 1%), P99 under **50ms**, queue backlog draining.
 7. **📄 Postmortem Generation:**
-   `generate_incident_postmortem` generates an executive postmortem report.
+   `generate_incident_postmortem` writes a short incident report.
 
 ### Step 4: Show the Postmortem Tab
 * Click on the **"📄 Incident Postmortems"** tab in the dashboard.
-* Show the automatically generated postmortem with:
+* Show the generated postmortem with:
   - Incident ID & SEV1 rating
-  - MTTD (< 15s) and MTTR (~45s)
+  - MTTD (alert on SLA breach) and measured MTTR
   - Root Cause Analysis & Quarantined Message IDs
   - Preventative action items table.
 
@@ -75,6 +75,6 @@ The agent executes the full SRE lifecycle:
 ## Key Talking Points for Your Video Voiceover
 
 1. *"Modern cloud downtime costs over \$5,000 per minute. While alerting takes seconds, MTTR takes 45 minutes of human engineers manually digging through logs at 3 AM."*
-2. *"We built StrandsOps using the open-source AWS Strands Agents SDK to eliminate the MTTR gap."*
-3. *"Notice that StrandsOps doesn't guess or run dangerous raw shell commands. It uses bounded, typed remediation primitives and enforces a mandatory blast-radius check before touching any infrastructure."*
-4. *"Most importantly, StrandsOps never declares victory blindly. It performs mathematical closed-loop verification, confirming error rates have dropped to 0% before writing the executive postmortem."*
+2. *"We built StrandsOps using the open-source AWS Strands Agents SDK to shrink that MTTR gap."*
+3. *"Notice that StrandsOps doesn't guess or run dangerous raw shell commands. It uses bounded, typed remediation steps and enforces a blast-radius check before touching anything."*
+4. *"Most importantly, it never declares victory blindly. It re-checks metrics across a soak window — error ≤ 1% and P99 ≤ 120 ms — before writing the postmortem."*

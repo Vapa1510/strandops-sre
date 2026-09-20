@@ -13,6 +13,6 @@ export async function GET() {
     return NextResponse.json({ postmortem });
   }
   return NextResponse.json({
-    postmortem: "# NO RECENT INCIDENT POSTMORTEM\n\nCluster is in nominal state. Run a chaos test to trigger an incident and postmortem analysis.",
+    postmortem: "# No recent postmortem\n\nCluster looks healthy. Stage an outage in the chaos lab, run triage, then open a write-up.",
   });
 }

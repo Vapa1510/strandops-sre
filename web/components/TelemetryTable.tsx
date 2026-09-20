@@ -1,8 +1,8 @@
 "use client";
 
 import React from "react";
-import { ServiceMetrics } from "@/lib/engine";
-import { Activity, ShieldAlert, Cpu, HardDrive, Network } from "lucide-react";
+import { ServiceMetrics, SLA_MAX_P99_MS, SLA_MAX_ERROR_RATE } from "@/lib/engine";
+import { Activity } from "lucide-react";
 
 interface TelemetryTableProps {
   services: Record<string, ServiceMetrics>;
@@ -12,67 +12,66 @@ export function TelemetryTable({ services }: TelemetryTableProps) {
   const serviceList = Object.values(services);
 
   return (
-    <div className="rounded-xl border border-white/10 bg-slate-950/60 p-5 backdrop-blur-md">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-cyan-400" />
-          <h2 className="text-base font-bold text-slate-100 font-mono tracking-tight">
-            Live Service Telemetry & SLA Thresholds
+    <div className="glass-panel p-5">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-brand/30 bg-brand/10">
+            <Activity className="w-4 h-4 text-brand-bright" />
+          </div>
+          <h2 className="font-display text-base font-bold text-white tracking-tight">
+            Live telemetry
           </h2>
         </div>
         <span className="text-xs font-mono text-slate-400">
-          SLA Targets: P99 &lt; 200ms &bull; Error Rate &lt; 1.0%
+          SLA: P99 ≤ {SLA_MAX_P99_MS}ms · Error ≤ {(SLA_MAX_ERROR_RATE * 100).toFixed(1)}%
         </span>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-xl border border-brand/10">
         <table className="w-full text-left font-mono text-xs">
           <thead>
-            <tr className="border-b border-white/10 text-slate-400 text-[11px] uppercase tracking-wider">
-              <th className="py-2.5 px-3">Service</th>
-              <th className="py-2.5 px-3">Status</th>
-              <th className="py-2.5 px-3">P50 / P95 / P99</th>
-              <th className="py-2.5 px-3">Error %</th>
-              <th className="py-2.5 px-3">Throughput</th>
-              <th className="py-2.5 px-3">CPU / Memory</th>
-              <th className="py-2.5 px-3">Pool</th>
-              <th className="py-2.5 px-3">Breaker</th>
-              <th className="py-2.5 px-3">Replicas</th>
+            <tr className="border-b border-brand/15 bg-[#071225]/80 text-slate-400 text-[11px] uppercase tracking-wider">
+              <th className="py-2.5 px-3 font-medium">Service</th>
+              <th className="py-2.5 px-3 font-medium">Status</th>
+              <th className="py-2.5 px-3 font-medium">P50 / P95 / P99</th>
+              <th className="py-2.5 px-3 font-medium">Error %</th>
+              <th className="py-2.5 px-3 font-medium">Throughput</th>
+              <th className="py-2.5 px-3 font-medium">CPU / Memory</th>
+              <th className="py-2.5 px-3 font-medium">Pool</th>
+              <th className="py-2.5 px-3 font-medium">Breaker</th>
+              <th className="py-2.5 px-3 font-medium">Replicas</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody className="divide-y divide-brand/10">
             {serviceList.map((svc) => {
-              const isLatencyViolated = svc.p99_ms > 200;
-              const isErrorViolated = svc.error_rate > 0.01;
+              const isLatencyViolated = svc.p99_ms > SLA_MAX_P99_MS;
+              const isErrorViolated = svc.error_rate > SLA_MAX_ERROR_RATE;
 
               return (
-                <tr key={svc.name} className="hover:bg-slate-900/40 transition-colors">
-                  {/* Service Name & Version */}
+                <tr key={svc.name} className="hover:bg-brand/5 transition-colors">
                   <td className="py-3 px-3">
-                    <div className="font-bold text-slate-100">{svc.name}</div>
-                    <div className="text-[10px] text-slate-400">
-                      port :{svc.port} &bull; {svc.deployment_version}
+                    <div className="font-bold text-slate-100 font-sans">{svc.name}</div>
+                    <div className="text-[10px] text-slate-500">
+                      port :{svc.port} · {svc.deployment_version}
                     </div>
                   </td>
 
-                  {/* Status */}
                   <td className="py-3 px-3">
                     <span
-                      className={`inline-block px-2 py-0.5 rounded text-[10px] uppercase font-bold border ${
+                      className={`inline-block px-2 py-0.5 rounded-md text-[10px] uppercase font-bold border ${
                         svc.status === "healthy"
                           ? "bg-emerald-950/70 border-emerald-700 text-emerald-300"
                           : svc.status === "degraded"
                           ? "bg-amber-950/70 border-amber-700 text-amber-300"
                           : svc.status === "unhealthy"
                           ? "bg-rose-950/70 border-rose-700 text-rose-300 animate-pulse"
-                          : "bg-cyan-950/70 border-cyan-700 text-cyan-300"
+                          : "bg-brand/20 border-brand/40 text-brand-soft"
                       }`}
                     >
                       {svc.status}
                     </span>
                   </td>
 
-                  {/* Latency */}
                   <td className="py-3 px-3">
                     <div className="text-slate-300">
                       <span>{svc.p50_ms}</span> / <span>{svc.p95_ms}</span> /{" "}
@@ -86,7 +85,6 @@ export function TelemetryTable({ services }: TelemetryTableProps) {
                     </div>
                   </td>
 
-                  {/* Error Rate */}
                   <td className="py-3 px-3">
                     <span
                       className={`font-bold ${
@@ -97,10 +95,8 @@ export function TelemetryTable({ services }: TelemetryTableProps) {
                     </span>
                   </td>
 
-                  {/* Throughput */}
                   <td className="py-3 px-3 text-slate-300">{svc.rps} rps</td>
 
-                  {/* CPU / Memory */}
                   <td className="py-3 px-3">
                     <div className="text-slate-300">
                       <span className={svc.cpu_percent > 80 ? "text-rose-400 font-bold" : ""}>
@@ -110,7 +106,6 @@ export function TelemetryTable({ services }: TelemetryTableProps) {
                     </div>
                   </td>
 
-                  {/* Connection Pool */}
                   <td className="py-3 px-3">
                     <span
                       className={
@@ -123,7 +118,6 @@ export function TelemetryTable({ services }: TelemetryTableProps) {
                     </span>
                   </td>
 
-                  {/* Circuit Breaker */}
                   <td className="py-3 px-3">
                     <span
                       className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
@@ -136,7 +130,6 @@ export function TelemetryTable({ services }: TelemetryTableProps) {
                     </span>
                   </td>
 
-                  {/* Replicas */}
                   <td className="py-3 px-3 text-slate-300">
                     {svc.replicas}/{svc.target_replicas}
                   </td>

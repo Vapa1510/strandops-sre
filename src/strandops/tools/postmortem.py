@@ -1,7 +1,6 @@
-"""Postmortem generator tool for StrandsOps.
+"""Postmortem generator for StrandsOps.
 
-Compiles an enterprise-grade Markdown incident postmortem summarizing root cause,
-telemetry timeline, MTTD, MTTR, and preventative action items.
+Builds a Markdown incident write-up: timeline, root cause, MTTR, fixes, and follow-ups.
 """
 from __future__ import annotations
 
@@ -10,22 +9,21 @@ from datetime import datetime, timezone
 from strands import tool
 from strandops.simulator.cloud import cloud
 from strandops.simulator.models import ChaosScenario
+from strandops.sla import is_sla_breached, max_error_rate_pct, max_p99_latency_ms
 
 
-# Scenario-specific RCA and preventive actions so the postmortem
-# is accurate regardless of which chaos scenario triggered it
 _RCA_MAP = {
     ChaosScenario.SQS_POISON_PILL: {
         "rca": (
             "* Corrupted message payloads entered the `order-processing-queue` without upfront schema validation.\n"
-            "* Worker threads in `inventory-worker` encountered `json.decoder.JSONDecodeError` exceptions on 3 malformed messages "
+            "* Worker threads in `inventory-worker` hit `json.decoder.JSONDecodeError` on 3 malformed messages "
             "(msg-bad-881, msg-bad-882, msg-bad-883), triggering exponential retries.\n"
             "* Valid customer orders backed up behind the poison pills, causing a 450-message backlog."
         ),
         "actions": [
             ("Implement strict JSON schema validation at the SQS ingestion gateway", "Preventative", "App Team", "Planned"),
             ("Add Dead-Letter Queue alert threshold at > 5 items", "Monitoring", "SRE Team", "In Progress"),
-            ("Automate StrandsOps autonomous quarantine policy for poison pills", "Automation", "StrandsOps", "Completed"),
+            ("Keep quarantine playbook for poison pills in the on-call runbook", "Process", "On-Call", "Completed"),
         ],
     },
     ChaosScenario.MEMORY_LEAK_OOM: {
@@ -49,7 +47,7 @@ _RCA_MAP = {
         "actions": [
             ("Add config validation gate in CI/CD pipeline to catch rate-limit values below minimum threshold", "Preventative", "Platform Team", "Planned"),
             ("Implement canary deployment with traffic-shadow comparison before full rollout", "Process", "SRE Team", "Planned"),
-            ("Automate StrandsOps rollback detection for config drift anomalies", "Automation", "StrandsOps", "Completed"),
+            ("Add config-drift checks to the standard rollback playbook", "Process", "On-Call", "Completed"),
         ],
     },
     ChaosScenario.DB_CONNECTION_STARVATION: {
@@ -68,24 +66,23 @@ _RCA_MAP = {
 
 _DEFAULT_RCA = {
     "rca": (
-        "* Telemetry and structured error logs correlated an acute failure signature across affected services.\n"
-        "* The StrandsOps agent identified the root cause through automated log correlation and metric analysis."
+        "* Telemetry and structured error logs pointed to an acute failure across the affected services.\n"
+        "* On-call triage correlated logs and metrics to isolate the failing component."
     ),
     "actions": [
-        ("Review and address the identified root cause with application team", "Preventative", "App Team", "Planned"),
+        ("Review and address the identified root cause with the application team", "Preventative", "App Team", "Planned"),
         ("Add monitoring coverage for the failure mode detected", "Monitoring", "SRE Team", "Planned"),
-        ("Update StrandsOps runbook with new remediation pattern", "Automation", "StrandsOps", "Completed"),
+        ("Update the on-call runbook with the remediation that worked", "Process", "On-Call", "Completed"),
     ],
 }
 
 
 @tool
 def generate_incident_postmortem(incident_title: str = "") -> str:
-    """Generate a formal Markdown Incident Postmortem for engineering leadership.
+    """Generate a Markdown incident postmortem for engineering leadership.
 
-    Call this AFTER an incident has been successfully verified as resolved.
-    Summarizes the failure timeline, root cause analysis, MTTR, remediation actions,
-    and long-term preventive measures.
+    Call this AFTER recovery has been verified. Summarizes timeline, root cause,
+    MTTR, remediation steps, and follow-up work.
 
     Args:
         incident_title: Optional custom title for the postmortem report.
@@ -94,30 +91,26 @@ def generate_incident_postmortem(incident_title: str = "") -> str:
     chaos = cloud.active_chaos
     now = datetime.now(timezone.utc)
 
-    title = incident_title.strip() or (incident.title if incident else "Autonomous Cloud Incident Remediation")
-    incident_id = incident.incident_id if incident else "INC-AUTO-01"
+    title = incident_title.strip() or (incident.title if incident else "Cloud Incident Remediation")
+    incident_id = incident.incident_id if incident else "INC-MANUAL-01"
     severity = incident.severity.value if incident else "SEV1"
     detected_at = incident.detected_at if incident else now
     resolved_at = incident.resolved_at if (incident and incident.resolved_at) else now
     affected = incident.affected_services if incident else ["cloud-infrastructure"]
-    actions = incident.remediation_actions_taken if incident else ["Automated self-healing triggered by StrandsOps"]
+    actions = incident.remediation_actions_taken if incident else ["Manual triage and remediation by on-call"]
 
-    # Compute real MTTD and MTTR from actual incident timestamps
-    # MTTD: time from incident creation to first agent action (we approximate as ~10-15s)
-    # MTTR: actual elapsed time from detection to resolution
     mttr_seconds = (resolved_at - detected_at).total_seconds()
     if mttr_seconds < 1:
-        mttr_display = "< 1 second (instant remediation)"
+        mttr_display = "< 1 second"
     elif mttr_seconds < 60:
         mttr_display = f"~{mttr_seconds:.0f} seconds"
     else:
         mttr_display = f"~{mttr_seconds / 60:.1f} minutes"
 
-    # Look up the scenario that was active when the incident was created
-    # (chaos may have been cleared by remediation, so we check the incident title for hints too)
-    scenario_key = chaos  # current chaos (may be None if resolved)
+    mttd_display = "Alert on SLA breach (ops monitor)"
+
+    scenario_key = chaos
     if scenario_key is None and incident:
-        # Infer from incident title when chaos has been cleared by remediation
         title_lower = incident.title.lower()
         if "poison" in title_lower or "sqs" in title_lower:
             scenario_key = ChaosScenario.SQS_POISON_PILL
@@ -136,12 +129,12 @@ def generate_incident_postmortem(incident_title: str = "") -> str:
 ---
 
 ## 1. Executive Summary
-On {detected_at.isoformat()[:10]}, an automated alert detected critical degradation in **{', '.join(affected)}**. 
-The **StrandsOps Autonomous SRE Agent** engaged immediately, diagnosed the root cause from structured error traces, verified remediation safety, executed targeted self-healing, and closed the incident following closed-loop verification.
+On {detected_at.isoformat()[:10]}, an alert fired for critical degradation in **{', '.join(affected)}**.
+On-call triage reviewed telemetry and logs, checked blast radius before acting, applied a targeted fix, and re-checked metrics before closing the incident.
 
-* **Mean Time to Detect (MTTD):** < 15 seconds (Autonomous telemetry monitor)
-* **Mean Time to Resolve (MTTR):** {mttr_display} (Detection to verified recovery)
-* **Customer Impact:** Mitigated before cascading upstream failures occurred.
+* **Mean Time to Detect (MTTD):** {mttd_display}
+* **Mean Time to Resolve (MTTR):** {mttr_display} (detection to verified recovery)
+* **Customer Impact:** Contained before wider upstream failure.
 
 ---
 
@@ -155,24 +148,28 @@ The **StrandsOps Autonomous SRE Agent** engaged immediately, diagnosed the root 
     for idx, act in enumerate(actions, 1):
         postmortem_md += f"{idx}. {act}\n"
 
-    # Measure live telemetry and queue status dynamically for closed-loop verification proof
     live_telemetry = cloud.get_telemetry()
     live_queue = cloud.get_queue_state()
     max_live_err = max((t.error_rate_pct for t in live_telemetry), default=0.0)
     max_live_p99 = max((t.p99_latency_ms for t in live_telemetry), default=0.0)
     queue_backlog = live_queue.approximate_messages_visible
     dlq_count = live_queue.dead_letter_count
-    all_within_sla = (max_live_err <= 1.0) and (max_live_p99 <= 120.0) and (len(live_queue.poison_pill_ids) == 0)
+    sla_err = max_error_rate_pct()
+    sla_p99 = max_p99_latency_ms()
+    all_within_sla = (
+        not any(is_sla_breached(t.error_rate_pct, t.p99_latency_ms) for t in live_telemetry)
+        and len(live_queue.poison_pill_ids) == 0
+    )
     proof_status = "VERIFIED HEALTHY" if all_within_sla else "DEGRADED (ACTION REQUIRED)"
 
     postmortem_md += f"""
 ---
 
 ## 4. Closed-Loop Verification Proof ({proof_status})
-* **Peak Error Rate:** {max_live_err:.1f}% (SLA: <= 1.0%)
-* **P99 Latency:** {max_live_p99:.1f} ms (SLA: <= 120.0 ms)
+* **Peak Error Rate:** {max_live_err:.1f}% (SLA: <= {sla_err}%)
+* **P99 Latency:** {max_live_p99:.1f} ms (SLA: <= {sla_p99} ms)
 * **Queue Backlog:** {queue_backlog} visible messages | DLQ: {dlq_count} quarantined
-* **System Health:** {"Operating safely within green SLA parameters" if all_within_sla else "Warning: Active metric degradation detected"}
+* **System Health:** {"Metrics within SLA across the cluster" if all_within_sla else "Warning: metrics still outside SLA — keep investigating"}
 
 ---
 
@@ -184,7 +181,7 @@ The **StrandsOps Autonomous SRE Agent** engaged immediately, diagnosed the root 
         postmortem_md += f"| {item} | {item_type} | {owner} | {status} |\n"
 
     postmortem_md += f"""
-*Report generated autonomously by StrandsOps SRE Agent at {now.isoformat()}.*
+*Report written by StrandsOps at {now.isoformat()}.*
 """
 
     return json.dumps({

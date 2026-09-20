@@ -463,7 +463,7 @@ def test_fast_triage_incident_routing():
         error_type="ConnectionPoolTimeout",
         signature="Connection pool is full, discarding connection",
     )
-    assert triage_hit["tier"] == "Tier-0 (Semantic Cache Hit)"
+    assert triage_hit["tier"] == "playbook_hit"
     assert triage_hit["escalation_needed"] is False
     assert triage_hit["plan"]["action_type"] == "restart_service"
 
@@ -473,9 +473,9 @@ def test_fast_triage_incident_routing():
         error_type="UnexpectedVendorKafkaDrop",
         signature="Fatal protocol handshake mismatch",
     )
-    assert triage_miss["tier"] == "Tier-1 (Fast Triage)"
+    assert triage_miss["tier"] == "full_investigation"
     assert triage_miss["escalation_needed"] is True
-    assert triage_miss["escalate_to"] == "Tier-2 (Claude 3.5 Sonnet)"
+    assert triage_miss["escalate_to"] == "full_investigation"
 
 
 # =============================================================================

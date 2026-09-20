@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from strands import tool
 from strandops.simulator.cloud import cloud
+from strandops.sla import is_sla_breached, max_error_rate_pct, max_p99_latency_ms
 
 
 @tool
@@ -34,7 +35,7 @@ def inspect_telemetry(service_name: str = "") -> str:
 
     report = []
     for s in snapshots:
-        sla_violation = (s.error_rate_pct > 1.0) or (s.p99_latency_ms > 120.0)
+        sla_violation = is_sla_breached(s.error_rate_pct, s.p99_latency_ms)
         report.append({
             "service": s.service_name,
             "status": s.status.value,
@@ -51,5 +52,9 @@ def inspect_telemetry(service_name: str = "") -> str:
     return json.dumps({
         "timestamp": snapshots[0].timestamp.isoformat(),
         "services_inspected": len(report),
+        "sla_thresholds": {
+            "max_error_rate_pct": max_error_rate_pct(),
+            "max_p99_latency_ms": max_p99_latency_ms(),
+        },
         "telemetry": report,
     }, indent=2)

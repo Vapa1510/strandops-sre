@@ -1,13 +1,7 @@
-"""StrandsOps Coordinator Agent — Autonomous Cloud SRE Agent.
+"""StrandsOps coordinator — on-call helper for cloud incidents.
 
-Built with the Strands Agents SDK.
-This coordinator acts like an experienced on-call engineer:
-1. Observes raw telemetry and correlates error spikes.
-2. Digs into stack traces to find the actual root cause (not just surface symptoms).
-3. Evaluates the blast radius before taking action so it doesn't cause a cascading failure.
-4. Executes targeted remediation (quarantine, restart, rollback).
-5. Double-checks live metrics (closed loop) before closing the ticket.
-6. Writes a clean postmortem report for the team.
+Investigates alerts, finds root causes, checks blast radius before acting,
+applies a targeted fix, re-checks metrics, then writes a short postmortem.
 """
 from __future__ import annotations
 
@@ -17,42 +11,47 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# System prompt modeled after real-world SRE on-call playbooks
-SRE_SYSTEM_PROMPT = """
-You are StrandsOps, an autonomous Site Reliability Engineering (SRE) assistant.
-Your job is to triage cloud alerts, find root causes, execute safe self-healing actions,
-and mathematically verify that systems have recovered before closing tickets.
+def _build_system_prompt() -> str:
+    """System prompt with live SLA thresholds from env / sla helpers."""
+    from strandops.sla import max_error_rate_pct, max_p99_latency_ms
 
-Think like a seasoned on-call engineer:
-- Rule #1: "First, do no harm." Never restart a service or purge data blindly.
-- Rule #2: Always diagnose before acting. Check telemetry and logs first to know what broke.
-- Rule #3: Check the blast radius. If restarting a service will drop upstream traffic, know the risks.
-- Rule #4: Never trust a blind confirmation. Always re-probe telemetry to ensure error rate = 0.0%.
-- Rule #5: Document everything. Once recovered, write an incident postmortem for the team.
+    sla_err = max_error_rate_pct()
+    sla_p99 = max_p99_latency_ms()
+    return f"""
+You are StrandsOps, an on-call SRE helper for this cluster.
+Triage alerts, find root causes, apply safe fixes, and verify recovery
+before closing the ticket - like a careful junior engineer on page duty.
 
-Available Tools:
-1. inspect_telemetry: Pull real-time P50/P95/P99 latency, error rates, RPS, and memory.
-2. fetch_error_logs: Read recent error logs and stack traces from microservices.
-3. inspect_queue_health: Inspect SQS message backlogs, dead-letter count, and poison pill IDs.
-4. analyze_blast_radius: Mandatory safety check to evaluate dependency risks before remediation.
-5. execute_remediation: Run safe operational primitives:
-   - 'quarantine_messages' (isolate corrupted messages to DLQ)
-   - 'restart_service' (graceful container reboot for memory/pool leaks)
-   - 'rollback_config' (revert bad deployment to last stable version)
-   - 'scale_service' (adjust instance count to handle load spikes, use parameters_json: {"delta": N})
-   - 'drain_traffic' (gracefully stop new requests for maintenance)
-6. verify_system_recovery: Closed-loop check with soak-window verification.
-   Use soak_checks=3 for production incidents to catch flapping services.
-7. generate_incident_postmortem: Output an executive Markdown postmortem summarizing the incident.
+Rules:
+1. Do no harm. Never restart a service or purge data blindly.
+2. Diagnose first. Read telemetry and logs before changing anything.
+3. Check blast radius. Know who else feels a restart or rollback.
+4. Do not trust a blind "done." Re-check telemetry: error rate <= {sla_err}%
+   and P99 <= {sla_p99} ms across the soak window before calling it recovered.
+5. Write it down. Leave a short postmortem once things are stable.
 
-Communication:
-Be clear, concise, and structured. Use emoji indicators for clarity:
-- 🚨 Incident Detected
-- 🔍 Root Cause Isolated
-- 🛡️ Blast Radius Checked
-- ⚡ Remediation Executed
-- ✅ Closed-Loop Recovery Verified
+Tools:
+1. inspect_telemetry - P50/P95/P99 latency, error rates, RPS, memory
+2. fetch_error_logs - recent WARN/ERROR/FATAL logs and stack traces
+3. inspect_queue_health - SQS backlog, DLQ count, poison pill IDs
+4. analyze_blast_radius - required before any mutating remediation
+5. execute_remediation - bounded actions only:
+   - quarantine_messages (move bad messages to DLQ)
+   - restart_service (graceful reboot for memory/pool leaks)
+   - rollback_config (revert a bad deploy)
+   - scale_service (parameters_json: {{"delta": N}})
+   - drain_traffic (stop new requests for maintenance)
+6. verify_system_recovery - soak-window check; use soak_checks=3 for real incidents
+7. generate_incident_postmortem - short Markdown write-up for leadership
+
+How to talk:
+Be plain and specific. Prefer short sections over slogans.
+Skip marketing language ("autonomous", "AI agent", "self-healing").
+Say what you saw, what you did, and what the metrics say now.
 """
+
+
+SRE_SYSTEM_PROMPT = _build_system_prompt()
 
 
 def get_provider_info() -> dict:
@@ -64,7 +63,7 @@ def get_provider_info() -> dict:
     triage_model_id = os.getenv("BEDROCK_TRIAGE_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     region = os.getenv("AWS_REGION", "us-east-1")
     has_keys = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
-    
+
     return {
         "provider": provider,
         "account_id": formatted_account,
@@ -73,8 +72,8 @@ def get_provider_info() -> dict:
         "triage_model_id": triage_model_id,
         "region": region,
         "has_credentials": has_keys,
-        "status": "Connected (Amazon Bedrock Active)" if has_keys else "AWS Bedrock Configured (Awaiting Keys)",
-        "inference_tier": "Two-Tier (Haiku Triage → Sonnet Reasoning)" if has_keys else "Single-Tier",
+        "status": "Connected" if has_keys else "Waiting for AWS keys",
+        "inference_tier": "Cache first, then full investigation" if has_keys else "Local / single path",
     }
 
 
@@ -175,18 +174,21 @@ def _build_triage_model():
     return None
 
 
-def fast_triage_incident(service_name: str, error_type: str = "", signature: str = "") -> dict:
-    """Tier-1 Hybrid Triage: Checks semantic incident cache first before LLM escalation.
+def fast_triage_incident(service_name: str = "", error_type: str = "", signature: str = "") -> dict:
+    """Check the playbook cache before a full investigation.
 
-    If an identical failure pattern has been resolved and verified previously,
-    returns the verified remediation in < 10ms with $0 cost.
+    If this exact failure was fixed and verified before, return that plan immediately.
     """
     from strandops.cache import incident_cache
 
-    cached = incident_cache.lookup(service=service_name, error_type=error_type, signature=signature)
+    cached = incident_cache.lookup(
+        service=service_name or "",
+        error_type=error_type or "",
+        signature=signature or "",
+    )
     if cached:
         return {
-            "tier": "Tier-0 (Semantic Cache Hit)",
+            "tier": "playbook_hit",
             "escalation_needed": False,
             "cost_usd": 0.0,
             "latency_ms": cached["lookup_latency_ms"],
@@ -194,21 +196,21 @@ def fast_triage_incident(service_name: str, error_type: str = "", signature: str
         }
 
     return {
-        "tier": "Tier-1 (Fast Triage)",
+        "tier": "full_investigation",
         "escalation_needed": True,
-        "escalate_to": "Tier-2 (Claude 3.5 Sonnet)",
-        "reason": "Novel incident signature not present in semantic cache.",
+        "escalate_to": "full_investigation",
+        "reason": "No matching playbook for this signature yet.",
     }
 
 
 def create_sre_agent():
-    """Initializes and returns the configured StrandsOps SRE Agent."""
+    """Create the StrandsOps on-call helper with tools and model wiring."""
     from strands import Agent
     from strandops.tools import SRE_TOOLS
 
     model = _build_model()
     kwargs = {
-        "system_prompt": SRE_SYSTEM_PROMPT,
+        "system_prompt": _build_system_prompt(),
         "tools": SRE_TOOLS,
     }
     if model is not None:

@@ -1,9 +1,7 @@
-"""Semantic Incident Cache for StrandsOps.
+"""Playbook cache for recurring incidents.
 
-Caches verified incident remediation playbooks. When recurring failure patterns
-(e.g., identical JSONDecodeError on SQS or connection starvation) hit the cluster,
-the agent resolves them in < 10ms with $0 LLM token cost without requiring multi-step
-model round-trips.
+When the same failure signature shows up again (same service + error + log shape),
+return the last verified fix immediately instead of re-investigating from scratch.
 """
 from __future__ import annotations
 

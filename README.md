@@ -1,6 +1,6 @@
-# 🛡️ StrandsOps — The 3 AM On-Call AI Co-Pilot
+# 🛡️ StrandsOps — The 3 AM On-Call Co-Pilot
 
-> **An autonomous SRE agent built with the [Strands Agents SDK](https://strandsagents.com) that investigates alerts, isolates root causes, checks blast radius, and safely heals cloud microservices before your phone rings.**
+> **An on-call SRE helper built with the [Strands Agents SDK](https://strandsagents.com) that investigates alerts, isolates root causes, checks blast radius, and safely heals cloud microservices before your phone rings.**
 
 Built for the **WeMakeDevs Bharat Builds / First Commit Hackathon 2026** — **BUILD IT Track (Agents & AI)**.
 
@@ -18,15 +18,15 @@ You’re terrified of running the wrong command because restarting a service bli
 
 According to Gartner, cloud downtime costs enterprises **\$5,600 every single minute**. But the real bottleneck isn't detection (alarms ring in seconds). The bottleneck is **Mean Time to Resolve (MTTR)**, which averages **45 to 90 minutes**—most of which is humans frantically sifting through logs and guessing.
 
-We asked ourselves: **Can we build an autonomous agent using the Strands Agents SDK that acts like an experienced junior SRE? An agent that investigates alerts, diagnoses the root cause, checks the blast radius so it doesn't break production worse, applies the fix, and proves it worked?**
+We asked ourselves: **Can we build an on-call helper with the Strands Agents SDK that acts like an experienced junior SRE? Something that investigates alerts, diagnoses the root cause, checks the blast radius so it doesn't break production worse, applies the fix, and proves it worked?**
 
 That is **StrandsOps**.
 
 ---
 
-## What Makes This Different from Typical "AI Agents"?
+## What Makes This Different from Typical Chatbots?
 
-Most hackathon AI agents are either chatbots that summarize text or dangerous scripts given raw bash access (`os.system`). In production, giving an LLM raw terminal access is a recipe for disaster.
+Most hackathon demos are either chatbots that summarize text or dangerous scripts given raw bash access (`os.system`). In production, giving a model raw terminal access is a recipe for disaster.
 
 StrandsOps is built on four core engineering principles:
 
@@ -67,7 +67,7 @@ StrandsOps is built on four core engineering principles:
                          ┌────────────────▼──────────────────┐
                          │    Closed-Loop Verification       │
                          │    (verify_system_recovery)       │
-                         │    Checks: Err=0%, P99 < 120ms    │
+                         │    Checks: Err ≤ 1%, P99 ≤ 120ms  │
                          └────────────────┬──────────────────┘
                                           │
                          ┌────────────────▼──────────────────┐
@@ -95,7 +95,7 @@ StrandsOps is built on four core engineering principles:
 * **Agent Boundaries:** Giving an agent fewer, well-typed tools makes it 10x more reliable than giving it broad, ambiguous tools.
 
 ### 4. The Execution
-* **190/190 Automated Tests Passing:** Comprehensive test suites across 7 modules cover baseline invariants, all 4 chaos scenarios, SRE tools, blast-radius safety gates, the Pluggable Action Registry (all 8 plugins), semantic incident caching, live AWS adapter contracts, mathematical soak verification, and **50 adversarial stress/injection edge cases**.
+* **193 Automated Tests Passing:** Comprehensive test suites cover baseline invariants, all 4 chaos scenarios, SRE tools, blast-radius safety gates, the Pluggable Action Registry (all 8 plugins), semantic incident caching, live AWS adapter contracts, soak verification, and adversarial stress/injection edge cases.
 * **One-Click Reproducible Demos:** One click in the UI simulates a real outage, and the agent fixes it live in under 30 seconds.
 
 ---
@@ -121,11 +121,21 @@ cp .env.example .env
 # Fill in your AWS credentials for Amazon Bedrock (or leave default for local/Ollama fallback)
 ```
 
-### 3. Run the Streamlit Incident Dashboard
+### 3. Run a Dashboard
+
+**Streamlit (wired to the Python agent):**
 ```bash
 streamlit run src/strandops/web.py
 ```
-*Open `http://localhost:8501` in your browser.*
+*Open `http://localhost:8501`.*
+
+**Next.js demo UI (in-browser simulator):**
+```bash
+cd web
+npm install
+npm run dev
+```
+*Open `http://localhost:3000`.*
 
 ### 4. Or Run the Terminal CLI
 ```bash
@@ -149,8 +159,8 @@ python -m pytest tests/ -v
    * 📜 **Reads Logs:** Catches `JSONDecodeError` on messages `msg-bad-881`, `882`, and `883`.
    * 🛡️ **Evaluates Blast Radius:** Confirms quarantining those 3 messages won't affect valid customer orders.
    * ⚡ **Remediates:** Moves poison pills to DLQ.
-   * ✅ **Verifies:** Confirms error rate drops to **0.0%** and P99 latency returns to **< 50ms**.
-   * 📄 **Generates Postmortem:** Switch to the **Postmortem tab** to see the complete executive report ready for engineering leadership.
+   * ✅ **Verifies:** Confirms error rate is back within SLA (≤ 1.0%) and P99 latency returns to **< 50ms**.
+   * 📄 **Generates Postmortem:** Switch to the **Postmortem tab** to see the complete report for engineering leadership.
 
 ---
 
@@ -162,29 +172,34 @@ strandops-sre/
 ├── .env.example                 # Bedrock & model provider configuration
 ├── README.md                    # This file
 ├── DEMO.md                      # Step-by-step video script
+├── web/                         # Next.js incident dashboard (in-browser engine)
+│   ├── app/                     # Pages + API routes
+│   ├── components/              # Topology, chaos lab, triage console
+│   └── lib/engine.ts            # Client-side cluster simulator
 ├── src/strandops/
 │   ├── __init__.py
-│   ├── agent.py                 # Strands SRE Coordinator Agent (Two-Tier Architecture)
-│   ├── cache.py                 # Semantic Incident Cache (< 10ms repeat resolution)
-│   ├── cli.py                   # Rich terminal SRE console
-│   ├── web.py                   # Streamlit Incident Command Center Dashboard
-│   ├── plugins/                 # Pluggable SRE Runbook Registry
-│   │   ├── base.py              # RemediationPlugin abstract base class
-│   │   ├── actions.py           # Typed plugins (scale, flush, trip, reroute, etc.)
-│   │   └── registry.py          # ActionRegistry singleton
+│   ├── agent.py                 # Strands on-call coordinator
+│   ├── sla.py                   # Shared SLA thresholds (env-backed)
+│   ├── cache.py                 # Playbook cache for known failure signatures
+│   ├── cli.py                   # Rich terminal console
+│   ├── web.py                   # Streamlit incident desk
+│   ├── plugins/                 # Pluggable runbook registry
+│   │   ├── base.py
+│   │   ├── actions.py
+│   │   └── registry.py
 │   ├── simulator/
-│   │   ├── models.py            # Microservice, Queue, Log, and Incident models
-│   │   ├── provider.py          # Abstract CloudProvider interface (Strategy Pattern)
-│   │   ├── aws_provider.py      # Live AWS Adapter (boto3 CloudWatch, ECS, SQS)
-│   │   └── cloud.py             # In-process cloud simulation & Chaos Engine
+│   │   ├── models.py
+│   │   ├── provider.py          # CloudProvider interface
+│   │   ├── aws_provider.py      # Live AWS adapter (partial)
+│   │   └── cloud.py             # In-process simulator + chaos
 │   └── tools/
-│       ├── telemetry.py         # inspect_telemetry tool
-│       ├── diagnostics.py       # fetch_error_logs & inspect_queue_health tools
-│       ├── safety.py            # analyze_blast_radius tool
-│       ├── remediation.py       # execute_remediation tool (dispatches via ActionRegistry)
-│       ├── verification.py      # verify_system_recovery tool (soak-window verification)
-│       └── postmortem.py        # generate_incident_postmortem tool
-└── tests/                       # 190 automated tests across 7 modules (100% passing)
+│       ├── telemetry.py
+│       ├── diagnostics.py
+│       ├── safety.py
+│       ├── remediation.py
+│       ├── verification.py
+│       └── postmortem.py
+└── tests/                       # Automated tests across simulator, tools, cache, soak
 ```
 
 ---

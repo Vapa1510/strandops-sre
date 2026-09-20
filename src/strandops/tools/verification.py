@@ -1,10 +1,12 @@
-"""Closed-Loop Verification tool for StrandsOps.
+"""Recovery verification for StrandsOps.
 
-Guarantees that an incident is not declared resolved until live telemetry
-verifies mathematical stability across a time-windowed soak period:
-1. Error rate stays 0.0% across all checkpoints (flapping elimination).
-2. Memory slope is flat (not leaking again: delta < 15%).
-3. Latency jitter is stable (< 15% variance).
+An incident is not closed until live telemetry stays stable across a soak window.
+Thresholds (must match the checks below; overridable via env):
+1. Per-checkpoint SLA: error rate ≤ SLA_MAX_ERROR_RATE_PERCENT (default 1.0%)
+   and P99 latency ≤ SLA_MAX_P99_LATENCY_MS (default 120 ms).
+2. Memory slope: final memory must stay within +15% of the first checkpoint.
+3. Latency jitter: P99 must not rise more than +20% across the soak window.
+4. Queue: no poison-pill messages remaining.
 """
 from __future__ import annotations
 
@@ -12,19 +14,19 @@ import json
 import time
 from strands import tool
 from strandops.simulator.cloud import cloud
+from strandops.sla import is_sla_breached, max_error_rate_pct, max_p99_latency_ms
 
 
 @tool
 def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_window_seconds: int = 0) -> str:
     """Verify whether cloud infrastructure has recovered to healthy SLA baselines.
 
-    Closed-Loop Safety Check: Call this AFTER executing remediation to mathematically
-    confirm that error rates have dropped to 0%, latency is within SLA, and memory is stable.
+    Call this AFTER remediation. Confirms error rate and P99 stay within SLA,
+    memory is stable, and the queue has no remaining poison pills.
 
-    Supports multi-checkpoint time-windowed soak verification:
-    - soak_checks=1: Single snapshot (fast, for routine baseline checks)
-    - soak_checks=3: Three checkpoints with soak-testing (recommended for production —
-      catches flapping services, re-emerging memory leaks, and latency jitter)
+    Supports multi-checkpoint soak verification:
+    - soak_checks=1: Single snapshot (fast baseline check)
+    - soak_checks=3: Three checkpoints (recommended — catches flapping and memory creep)
 
     Args:
         service_name: Optional specific service to verify. Omit to verify all services.
@@ -34,10 +36,10 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
     raw = service_name.strip().lower().replace(" ", "-").replace("_", "-") if service_name else ""
     target = None if raw in ("", "all", "none", "null") else raw
 
-    # Clamp soak_checks to a safe range
     num_checks = max(1, min(int(soak_checks), 5))
+    sla_err = max_error_rate_pct()
+    sla_p99 = max_p99_latency_ms()
 
-    # Defensive check: if a specific service was requested, ensure it actually exists
     initial_check = cloud.get_telemetry(target)
     if target and not initial_check:
         return json.dumps({
@@ -52,10 +54,12 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
             "queue_healthy": False,
             "healthy_services": [],
             "unrecovered_services": [{"service": service_name, "error": f"Unknown service '{service_name}'"}],
-            "verdict": f"❌ ERROR: Cannot verify recovery — service '{service_name}' does not exist in cluster topology.",
+            "verdict": (
+                f"Cannot verify recovery - service '{service_name}' "
+                "does not exist in the cluster topology."
+            ),
         }, indent=2)
 
-    # Collect health snapshots across multiple checkpoints
     checkpoint_results = []
     telemetry_history = []
     all_checkpoints_healthy = True
@@ -77,14 +81,20 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
         snapshots = cloud.get_telemetry(target)
         if not snapshots:
             all_checkpoints_healthy = False
-            break
+            checkpoint_results.append({
+                "checkpoint": checkpoint_idx + 1,
+                "healthy": False,
+                "failing_count": -1,
+                "error": "no telemetry returned",
+            })
+            continue
 
         telemetry_history.append(snapshots)
         failing_services = []
         healthy_services = []
 
         for s in snapshots:
-            is_failing = (s.error_rate_pct > 1.0) or (s.p99_latency_ms > 120.0)
+            is_failing = is_sla_breached(s.error_rate_pct, s.p99_latency_ms)
             entry = {
                 "service": s.service_name,
                 "error_rate_pct": f"{s.error_rate_pct:.1f}%",
@@ -112,11 +122,9 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
             "failing_count": len(failing_services),
         })
 
-    # Mathematical stability analysis
     passed_count = sum(1 for c in checkpoint_results if c["healthy"])
     failed_count = num_checks - passed_count
 
-    # Check for memory slope leaks across checkpoints
     memory_leaking_again = False
     if len(telemetry_history) >= 2:
         first_pass = {s.service_name: s.memory_usage_mb for s in telemetry_history[0]}
@@ -127,7 +135,6 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
                 memory_leaking_again = True
                 break
 
-    # Check for latency jitter variance across checkpoints (> 20% degradation)
     latency_jitter_unstable = False
     if len(telemetry_history) >= 2:
         first_lat = {s.service_name: s.p99_latency_ms for s in telemetry_history[0]}
@@ -143,18 +150,24 @@ def verify_system_recovery(service_name: str = "", soak_checks: int = 1, soak_wi
     if is_flapping:
         stability = "UNSTABLE_FLAPPING"
         verdict = (
-            f"⚠️ UNSTABLE_FLAPPING: Service recovered in {passed_count}/{num_checks} checkpoints "
-            f"but degraded in {failed_count} or showed upward memory slope / latency jitter. System failed soak test."
+            f"UNSTABLE: Passed {passed_count}/{num_checks} checkpoints but failed "
+            f"{failed_count} or showed rising memory / latency jitter. Soak check failed."
         )
         all_checkpoints_healthy = False
         stability_confidence = round(min((passed_count / num_checks) * 100, 50.0), 1)
     elif all_checkpoints_healthy:
         stability = "STABLE"
-        verdict = "✅ SUCCESS: All services healthy and operating within SLA parameters across soak window."
+        verdict = (
+            f"SUCCESS: Services within SLA (err ≤ {sla_err}%, P99 ≤ {sla_p99} ms) "
+            "across the soak window."
+        )
         stability_confidence = round((passed_count / num_checks) * 100, 1)
     else:
         stability = "DEGRADED"
-        verdict = "❌ DEGRADED: One or more services are still breaching SLA thresholds across all checkpoints."
+        verdict = (
+            f"DEGRADED: One or more services still breach SLA "
+            f"(err ≤ {sla_err}% / P99 ≤ {sla_p99} ms) across checkpoints."
+        )
         stability_confidence = round((passed_count / num_checks) * 100, 1)
 
     return json.dumps({

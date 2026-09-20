@@ -29,22 +29,22 @@ def main() -> None:
 
     console.print(Panel(
         Text.from_markup(
-            "[bold red]🛡️  STRANDSOPS — AUTONOMOUS CLOUD SRE CONSOLE[/bold red]\n"
-            "[dim]Powered by Strands Agents SDK & Amazon Bedrock (AWS)[/dim]\n\n"
-            f"[bold cyan]☁️  AWS Cloud Service:[/bold cyan] Amazon Bedrock\n"
-            f"[bold cyan]🆔 AWS Account ID:[/bold cyan] [white]{info['account_id']}[/white]\n"
-            f"[bold cyan]🤖 Bedrock Model:[/bold cyan] [white]{info['model_id']}[/white]\n"
-            f"[bold cyan]📍 AWS Region:[/bold cyan] [white]{info['region']}[/white]\n"
-            f"[bold cyan]🔑 Bedrock Status:[/bold cyan] [{status_color}]{info['status']}[/{status_color}]\n\n"
-            "[bold white]Available Commands:[/bold white]\n"
-            "• [cyan]chaos 1[/cyan] : Inject SQS Poison-Pill Storm\n"
-            "• [cyan]chaos 2[/cyan] : Inject Payment Gateway Memory Leak (OOM)\n"
-            "• [cyan]chaos 3[/cyan] : Inject Misconfigured API Rate Limiter\n"
-            "• [cyan]chaos 4[/cyan] : Inject DB Connection Pool Starvation\n"
+            "[bold red]STRANDSOPS — ON-CALL CONSOLE[/bold red]\n"
+            "[dim]Investigate alerts, check blast radius, fix, then re-check metrics[/dim]\n\n"
+            f"[bold cyan]Cloud link:[/bold cyan] model access via AWS\n"
+            f"[bold cyan]Account:[/bold cyan] [white]{info['account_id']}[/white]\n"
+            f"[bold cyan]Model:[/bold cyan] [white]{info['model_id']}[/white]\n"
+            f"[bold cyan]Region:[/bold cyan] [white]{info['region']}[/white]\n"
+            f"[bold cyan]Status:[/bold cyan] [{status_color}]{info['status']}[/{status_color}]\n\n"
+            "[bold white]Commands:[/bold white]\n"
+            "• [cyan]chaos 1[/cyan] : Inject SQS poison-pill storm\n"
+            "• [cyan]chaos 2[/cyan] : Inject payment gateway memory leak\n"
+            "• [cyan]chaos 3[/cyan] : Inject misconfigured API rate limiter\n"
+            "• [cyan]chaos 4[/cyan] : Inject DB connection pool starvation\n"
             "• [cyan]status[/cyan]  : Print live telemetry table\n"
-            "• [cyan]reset[/cyan]   : Restore cloud to healthy baseline\n"
-            "• [cyan]exit[/cyan]    : Quit console\n"
-            "Or simply type your prompt in natural language!"
+            "• [cyan]reset[/cyan]   : Restore cluster to healthy baseline\n"
+            "• [cyan]exit[/cyan]    : Quit\n"
+            "Or type what you need in plain language."
         ),
         border_style="red",
         padding=(1, 2),
@@ -75,7 +75,7 @@ def main() -> None:
         try:
             user_input = console.input("[bold yellow]StrandsOps> [/bold yellow]").strip()
         except (KeyboardInterrupt, EOFError):
-            console.print("\n[dim]Exiting StrandsOps console. Keep your clusters green! 👋[/dim]")
+            console.print("\n[dim]Exiting. Talk soon.[/dim]")
             break
 
         if not user_input:
@@ -83,7 +83,7 @@ def main() -> None:
 
         cmd = user_input.lower()
         if cmd in ("exit", "quit", "q"):
-            console.print("[dim]Exiting StrandsOps console. Keep your clusters green! 👋[/dim]")
+            console.print("[dim]Exiting. Talk soon.[/dim]")
             break
 
         elif cmd == "status":
@@ -119,8 +119,8 @@ def main() -> None:
             print_status_table()
             user_input = "Order Service database connection pool is starved. Diagnose root cause, check blast radius, and remediate."
 
-        # Pass prompt to Strands agent
-        console.print("\n[dim]StrandsOps agent reasoning...[/dim]")
+        # Pass prompt to the on-call helper
+        console.print("\n[dim]Working through it...[/dim]")
         try:
             response = agent(user_input)
             reply = ""
@@ -133,7 +133,7 @@ def main() -> None:
 
             console.print(Panel(
                 Markdown(reply),
-                title="[bold green]StrandsOps Resolution[/bold green]",
+                title="[bold green]Resolution[/bold green]",
                 border_style="green",
                 padding=(1, 2),
             ))
@@ -141,12 +141,12 @@ def main() -> None:
             err_type = type(e).__name__
             if "NoCredentialsError" in err_type or "credentials" in str(e).lower():
                 console.print(
-                    "[bold yellow]⚠️  AWS Bedrock Credentials Required:[/bold yellow] "
-                    "Configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env, "
+                    "[bold yellow]Cloud credentials needed:[/bold yellow] "
+                    "Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env, "
                     "or set MODEL_PROVIDER=ollama for offline testing."
                 )
             else:
-                console.print(f"[bold red]Execution error ({err_type}):[/bold red] {e}")
+                console.print(f"[bold red]Error ({err_type}):[/bold red] {e}")
 
 
 if __name__ == "__main__":

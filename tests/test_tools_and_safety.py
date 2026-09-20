@@ -70,9 +70,12 @@ def test_inspect_telemetry_casing_and_hyphen_normalization():
 # =============================================================================
 
 def test_fetch_error_logs_all_services():
+    # Healthy baseline only emits INFO — inject chaos so WARN/ERROR exist
+    cloud.inject_chaos(ChaosScenario.SQS_POISON_PILL)
     res = json.loads(fetch_error_logs())
     assert res["total_logs"] > 0
     assert res["filter_service"] == "ALL"
+    assert all(e["level"] in ("WARN", "ERROR", "FATAL") for e in res["entries"])
 
 
 def test_fetch_error_logs_clamps_limit():

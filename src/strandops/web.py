@@ -25,10 +25,11 @@ except ImportError:
 from strandops.simulator.cloud import cloud
 from strandops.simulator.models import ChaosScenario
 from strandops.agent import create_sre_agent, get_provider_info
+from strandops.sla import max_error_rate_pct, max_p99_latency_ms
 
 
 st.set_page_config(
-    page_title="StrandsOps — Autonomous SRE Command Center",
+    page_title="StrandsOps — Incident Desk",
     page_icon="🛡️",
     layout="wide",
 )
@@ -44,43 +45,43 @@ def get_agent():
 # Top Header & Status Banner
 col_header, col_status = st.columns([3, 1])
 with col_header:
-    st.title("🛡️ StrandsOps — Incident Command Center")
-    st.caption("Autonomous Cloud SRE & Self-Healing Agent powered by **Strands Agents SDK** & **Amazon Bedrock** (AWS)")
+    st.title("🛡️ StrandsOps — Incident Desk")
+    st.caption("Investigate alerts, check blast radius, fix carefully, then re-check metrics")
 
 with col_status:
     inc = cloud.active_incident
     if inc and inc.status == "OPEN":
         st.error(f"🚨 **ACTIVE ALERT: {inc.severity.value}**\n\n{inc.title}")
     else:
-        st.success("🟢 **ALL SYSTEMS OPERATIONAL**\n\nOperating within green SLA parameters")
+        st.success("🟢 **All clear**\n\nMetrics within SLA")
 
 # Left Sidebar: AWS Cloud Services, Chaos Lab & Cluster Topology
 with st.sidebar:
-    st.header("☁️ AWS Cloud Services")
+    st.header("☁️ Cloud Link")
     info = get_provider_info()
     st.markdown(f"**Linked Account:** `{info['account_id']}`")
     if info["has_credentials"]:
-        st.success(f"🟢 **Amazon Bedrock: Active**\n\nModel: `{info['model_id']}`\n\nRegion: `{info['region']}`")
+        st.success(f"🟢 **Model access: Active**\n\nModel: `{info['model_id']}`\n\nRegion: `{info['region']}`")
     else:
-        st.info(f"🟡 **Amazon Bedrock: Ready**\n\nModel: `{info['model_id']}`\n\nRegion: `{info['region']}`")
+        st.info(f"🟡 **Model access: Ready**\n\nModel: `{info['model_id']}`\n\nRegion: `{info['region']}`")
         with st.expander("🔑 AWS Credentials"):
             st.caption("Add AWS keys here or edit `.env`:")
             key_id = st.text_input("AWS Access Key ID", value=os.getenv("AWS_ACCESS_KEY_ID", ""), type="password")
             secret = st.text_input("AWS Secret Access Key", value=os.getenv("AWS_SECRET_ACCESS_KEY", ""), type="password")
             region_val = st.text_input("AWS Region", value=info["region"])
-            if st.button("Connect to Live Bedrock", use_container_width=True):
+            if st.button("Connect model access", use_container_width=True):
                 if key_id and secret:
                     os.environ["AWS_ACCESS_KEY_ID"] = key_id
                     os.environ["AWS_SECRET_ACCESS_KEY"] = secret
                     os.environ["AWS_REGION"] = region_val
                     if "agent" in st.session_state:
                         del st.session_state["agent"]
-                    st.success("Connected to Amazon Bedrock!")
+                    st.success("Connected.")
                     st.rerun()
 
     st.divider()
-    st.header("⚡ Chaos Engineering Lab")
-    st.markdown("Inject realistic production incidents to watch the agent triage & heal:")
+    st.header("⚡ Chaos Lab")
+    st.markdown("Inject a realistic outage, then watch triage and recovery:")
 
     if st.button("💣 1. Inject SQS Poison Pill Storm", use_container_width=True):
         cloud.inject_chaos(ChaosScenario.SQS_POISON_PILL)
@@ -127,9 +128,19 @@ max_err = max((t.error_rate_pct for t in telemetry), default=0.0)
 total_rps = sum(t.requests_per_sec for t in telemetry) if telemetry else 0.0
 
 with col1:
-    st.metric("Avg P99 Latency", f"{avg_p99:.1f} ms", delta="-Normal" if avg_p99 < 120 else "+HIGH", delta_color="inverse")
+    st.metric(
+        "Avg P99 Latency",
+        f"{avg_p99:.1f} ms",
+        delta="OK" if avg_p99 <= max_p99_latency_ms() else "HIGH",
+        delta_color="inverse",
+    )
 with col2:
-    st.metric("Peak Error Rate", f"{max_err:.1f} %", delta="-Healthy" if max_err <= 1.0 else "+CRITICAL", delta_color="inverse")
+    st.metric(
+        "Peak Error Rate",
+        f"{max_err:.1f} %",
+        delta="OK" if max_err <= max_error_rate_pct() else "CRITICAL",
+        delta_color="inverse",
+    )
 with col3:
     st.metric("Aggregate Throughput", f"{total_rps:.0f} RPS")
 with col4:
@@ -152,22 +163,25 @@ fig = px.bar(
     x="Service",
     y=["P99 Latency (ms)", "Error Rate (%)"],
     barmode="group",
-    title="Service Telemetry vs SLA Thresholds (Latency SLA: 120ms | Error Rate SLA: 1.0%)",
+    title=(
+        f"Service telemetry vs SLA "
+        f"(P99 ≤ {max_p99_latency_ms():.0f} ms · error ≤ {max_error_rate_pct()}%)"
+    ),
     height=280,
 )
 st.plotly_chart(fig, use_container_width=True, key="telemetry_chart")
 
 # Main Workspace Tabs
-tab_chat, tab_postmortem, tab_logs = st.tabs(["🤖 Autonomous SRE Console", "📄 Incident Postmortems", "📜 Live Log Stream"])
+tab_chat, tab_postmortem, tab_logs = st.tabs(["On-Call Console", "Postmortems", "Log Stream"])
 
 with tab_chat:
-    st.subheader("Interactive Incident Command Console")
-    
+    st.subheader("On-call console")
+
     if "messages" not in st.session_state:
         st.session_state.messages = [
             {
                 "role": "assistant",
-                "content": "👋 I am **StrandsOps**, your autonomous cloud SRE agent. Click a chaos scenario in the sidebar to simulate an outage, or instruct me to investigate any degraded services.",
+                "content": "Hi — I'm **StrandsOps**. Pick a chaos scenario in the sidebar to stage an outage, or tell me which service looks wrong.",
             }
         ]
 
@@ -179,7 +193,7 @@ with tab_chat:
     if "quick_prompt" in st.session_state:
         prompt = st.session_state.pop("quick_prompt")
 
-    if user_input := st.chat_input("Command the SRE agent (e.g. 'Investigate the error spike and heal the cluster')..."):
+    if user_input := st.chat_input("Describe the alert or ask for a fix..."):
         prompt = user_input
 
     if prompt:
@@ -188,16 +202,16 @@ with tab_chat:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("StrandsOps analyzing telemetry, correlating error logs & checking blast radius..."):
+            with st.spinner("Checking telemetry, logs, and blast radius..."):
                 triage_banner = ""
                 try:
                     from strandops.agent import fast_triage_incident
                     if inc and inc.affected_services:
                         t_info = fast_triage_incident(inc.affected_services[0])
                         if not t_info.get("escalation_needed"):
-                            triage_banner = "⚡ **Tier-0 Semantic Cache Hit** (< 1ms, $0.00 cost) — Verified Playbook Recalled\n\n"
+                            triage_banner = "**Seen this before** — using the playbook from a prior incident.\n\n"
                         else:
-                            triage_banner = "⚡ **Tier-1 Fast Triage** → Escalated to Tier-2 (Claude 3.5 Sonnet on Amazon Bedrock)\n\n"
+                            triage_banner = "**New pattern** — running a full investigation.\n\n"
 
                     agent = get_agent()
                     response = agent(prompt)
@@ -216,26 +230,26 @@ with tab_chat:
                     err_type = type(e).__name__
                     if "NoCredentialsError" in err_type or "credentials" in err_msg.lower():
                         reply = (
-                            "⚠️ **Amazon Bedrock Credentials Required**\n\n"
-                            "The autonomous agent requires AWS credentials to invoke Claude 3.5 Sonnet on Amazon Bedrock.\n\n"
+                            "**Cloud credentials needed**\n\n"
+                            "Investigation needs AWS credentials for model access.\n\n"
                             "**How to connect:**\n"
-                            "1. Open the left sidebar 👈 and enter your **AWS Access Key ID** & **Secret Access Key** under **AWS Credentials**\n"
-                            "2. Click **Connect to Live Bedrock**\n"
+                            "1. Open the left sidebar and enter your **AWS Access Key ID** & **Secret Access Key**\n"
+                            "2. Click **Connect model access**\n"
                             "3. Or edit `.env` in your project root with your AWS keys\n"
-                            "4. Or set `MODEL_PROVIDER=ollama` in `.env` for free offline local testing."
+                            "4. Or set `MODEL_PROVIDER=ollama` in `.env` for local offline testing."
                         )
                     else:
-                        reply = f"❌ **Agent Execution Error ({err_type})**: {err_msg}"
+                        reply = f"**Error ({err_type})**: {err_msg}"
 
                 st.markdown(reply)
                 st.session_state.messages.append({"role": "assistant", "content": reply})
 
 with tab_postmortem:
-    st.subheader("Automated Incident Postmortem Reports")
+    st.subheader("Incident postmortems")
     from strandops.tools.postmortem import generate_incident_postmortem
     import json as _json
 
-    if st.button("📄 Generate Postmortem for Current Incident", use_container_width=True):
+    if st.button("Generate postmortem for current incident", use_container_width=True):
         pm_raw = generate_incident_postmortem()
         pm_data = _json.loads(pm_raw)
         st.session_state["last_postmortem"] = pm_data.get("markdown_report", "No postmortem available.")
@@ -243,10 +257,10 @@ with tab_postmortem:
     if "last_postmortem" in st.session_state:
         st.markdown(st.session_state["last_postmortem"])
     else:
-        st.info("No postmortem generated yet. Resolve an incident first, then click the button above.")
+        st.info("No postmortem yet. Resolve an incident first, then generate one.")
 
 with tab_logs:
-    st.subheader("Raw CloudWatch / Microservice Structured Logs")
+    st.subheader("Structured service logs")
     logs = cloud.get_logs(limit=25)
     log_records = [
         {

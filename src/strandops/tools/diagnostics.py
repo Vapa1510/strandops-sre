@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 from strands import tool
 from strandops.simulator.cloud import cloud
+from strandops.simulator.models import LogSeverity
+
+_ERROR_LEVELS = {LogSeverity.WARN, LogSeverity.ERROR, LogSeverity.FATAL}
 
 
 @tool
@@ -25,7 +28,9 @@ def fetch_error_logs(service_name: str = "", limit: int = 10) -> str:
     raw = service_name.strip().lower().replace(" ", "-").replace("_", "-") if service_name else ""
     target = None if raw in ("", "all", "none", "null") else raw
     limit = max(1, min(limit, 50))
-    logs = cloud.get_logs(service_name=target, limit=limit)
+    # Over-fetch then filter so WARN/ERROR/FATAL still fill the requested limit
+    candidates = cloud.get_logs(service_name=target, limit=max(limit * 10, 50))
+    logs = [l for l in candidates if l.level in _ERROR_LEVELS][-limit:]
 
     log_entries = []
     for l in logs:
@@ -43,6 +48,7 @@ def fetch_error_logs(service_name: str = "", limit: int = 10) -> str:
     return json.dumps({
         "total_logs": len(log_entries),
         "filter_service": service_name or "ALL",
+        "severity_filter": ["WARN", "ERROR", "FATAL"],
         "entries": log_entries,
     }, indent=2)
 

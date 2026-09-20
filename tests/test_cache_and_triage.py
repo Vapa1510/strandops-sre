@@ -137,7 +137,7 @@ def test_fast_triage_known_incident_resolves_in_tier_zero():
         error_type="HTTP_429_TOO_MANY_REQUESTS",
         signature="Rate limit exceeded: 429 Too Many Requests sent to client",
     )
-    assert res["tier"] == "Tier-0 (Semantic Cache Hit)"
+    assert res["tier"] == "playbook_hit"
     assert res["escalation_needed"] is False
     assert res["cost_usd"] == 0.0
     assert res["plan"]["action_type"] == "rollback_config"
@@ -149,9 +149,9 @@ def test_fast_triage_novel_incident_escalates_to_tier_two():
         error_type="UnhandledCustomCorruptedException",
         signature="Unknown stack trace failure",
     )
-    assert res["tier"] == "Tier-1 (Fast Triage)"
+    assert res["tier"] == "full_investigation"
     assert res["escalation_needed"] is True
-    assert res["escalate_to"] == "Tier-2 (Claude 3.5 Sonnet)"
+    assert res["escalate_to"] == "full_investigation"
 
 
 def test_provider_info_reports_two_tier_configuration():

@@ -1,7 +1,7 @@
 [project]
 name = "strandops-sre"
 version = "0.1.0"
-description = "Autonomous Cloud SRE & Self-Healing Agent powered by Strands Agents SDK and AWS"
+description = "On-call SRE helper for cloud incidents — Strands Agents SDK and AWS"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -17,6 +17,7 @@ dependencies = [
 web = [
     "streamlit>=1.35",
     "plotly>=5.20",
+    "pandas>=2.0",
 ]
 dev = [
     "pytest>=8.0",
