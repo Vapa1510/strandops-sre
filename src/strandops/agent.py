@@ -58,6 +58,8 @@ Be clear, concise, and structured. Use emoji indicators for clarity:
 def get_provider_info() -> dict:
     """Return active model provider configuration and AWS Bedrock status."""
     provider = os.getenv("MODEL_PROVIDER", "bedrock").lower()
+    raw_account = os.getenv("AWS_ACCOUNT_ID", "379264687588").replace("-", "")
+    formatted_account = f"{raw_account[:4]}-{raw_account[4:8]}-{raw_account[8:]}" if len(raw_account) == 12 else raw_account
     model_id = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-3-5-sonnet-20240620-v1:0")
     triage_model_id = os.getenv("BEDROCK_TRIAGE_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     region = os.getenv("AWS_REGION", "us-east-1")
@@ -65,6 +67,8 @@ def get_provider_info() -> dict:
     
     return {
         "provider": provider,
+        "account_id": formatted_account,
+        "raw_account_id": raw_account,
         "model_id": model_id,
         "triage_model_id": triage_model_id,
         "region": region,

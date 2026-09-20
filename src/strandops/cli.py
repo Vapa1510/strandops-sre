@@ -32,6 +32,7 @@ def main() -> None:
             "[bold red]🛡️  STRANDSOPS — AUTONOMOUS CLOUD SRE CONSOLE[/bold red]\n"
             "[dim]Powered by Strands Agents SDK & Amazon Bedrock (AWS)[/dim]\n\n"
             f"[bold cyan]☁️  AWS Cloud Service:[/bold cyan] Amazon Bedrock\n"
+            f"[bold cyan]🆔 AWS Account ID:[/bold cyan] [white]{info['account_id']}[/white]\n"
             f"[bold cyan]🤖 Bedrock Model:[/bold cyan] [white]{info['model_id']}[/white]\n"
             f"[bold cyan]📍 AWS Region:[/bold cyan] [white]{info['region']}[/white]\n"
             f"[bold cyan]🔑 Bedrock Status:[/bold cyan] [{status_color}]{info['status']}[/{status_color}]\n\n"

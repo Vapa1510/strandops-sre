@@ -58,6 +58,7 @@ with col_status:
 with st.sidebar:
     st.header("☁️ AWS Cloud Services")
     info = get_provider_info()
+    st.markdown(f"**Linked Account:** `{info['account_id']}`")
     if info["has_credentials"]:
         st.success(f"🟢 **Amazon Bedrock: Active**\n\nModel: `{info['model_id']}`\n\nRegion: `{info['region']}`")
     else:
