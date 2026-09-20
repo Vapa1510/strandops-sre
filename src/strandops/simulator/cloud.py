@@ -514,6 +514,78 @@ class CloudInfrastructure(CloudProvider):
             "drained_at": datetime.now(timezone.utc).isoformat(),
         }
 
+    def flush_cache(self, cache_cluster: str, key_pattern: str = "*") -> Dict[str, object]:
+        """Flush stale Redis/ElastiCache keys causing data inconsistency."""
+        cluster = _normalize_name(cache_cluster)
+        cleared_count = 1420
+
+        if self.active_incident:
+            self.active_incident.remediation_actions_taken.append(
+                f"Flushed cache keys ('{key_pattern}') on cluster '{cluster}'"
+            )
+
+        self._emit_log(
+            service="cache-manager",
+            level=LogSeverity.INFO,
+            message=f"Flushed {cleared_count} keys matching '{key_pattern}' from {cluster}",
+        )
+
+        return {
+            "status": "success",
+            "cache_cluster": cluster,
+            "key_pattern": key_pattern,
+            "keys_cleared": cleared_count,
+            "flushed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def trip_circuit_breaker(self, service_name: str, shed_pct: int = 100) -> Dict[str, object]:
+        """Temporarily sheds traffic from a failing third-party API or downstream dependency."""
+        svc = _normalize_name(service_name)
+        clamped_pct = max(0, min(shed_pct, 100))
+
+        if self.active_incident:
+            self.active_incident.remediation_actions_taken.append(
+                f"Tripped circuit breaker on '{svc}' (shedding {clamped_pct}% of traffic to preserve core checkout)"
+            )
+
+        self._emit_log(
+            service=svc,
+            level=LogSeverity.WARN,
+            message=f"Circuit breaker tripped on {svc}. Shedding {clamped_pct}% of downstream calls.",
+        )
+
+        return {
+            "status": "success",
+            "service": svc,
+            "circuit_breaker_state": "OPEN" if clamped_pct > 0 else "CLOSED",
+            "traffic_shed_pct": clamped_pct,
+            "tripped_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def reroute_traffic(self, service_name: str, from_az: str, to_az: str) -> Dict[str, object]:
+        """Shifts traffic away from a degraded AWS Availability Zone to a healthy one."""
+        svc = _normalize_name(service_name)
+
+        if self.active_incident:
+            self.active_incident.remediation_actions_taken.append(
+                f"Rerouted traffic for '{svc}' from {from_az} -> {to_az}"
+            )
+
+        self._emit_log(
+            service=svc,
+            level=LogSeverity.INFO,
+            message=f"Rerouted AZ traffic on {svc}: Shifted 100% of ingress from {from_az} to {to_az}.",
+        )
+
+        return {
+            "status": "success",
+            "service": svc,
+            "from_az": from_az,
+            "to_az": to_az,
+            "reroute_state": "completed",
+            "rerouted_at": datetime.now(timezone.utc).isoformat(),
+        }
+
 
 # Singleton cloud instance — resolved via the provider factory
 cloud = CloudInfrastructure()

@@ -1,37 +1,58 @@
 """Remediation execution tool for StrandsOps.
 
-Executes strictly bounded, typed self-healing actions on the cloud infrastructure.
-All 5 supported primitives are non-destructive and reversible:
-- quarantine_messages  — isolate poison pills to DLQ (no data loss)
-- restart_service      — graceful container reboot (flushes memory/pool leaks)
-- rollback_config      — revert deployment to last known good version
-- scale_service        — adjust instance count (capped at ±5 per operation)
-- drain_traffic        — stop new requests, drain in-flight connections gracefully
+Executes strictly bounded, typed self-healing actions on the cloud infrastructure
+using the Pluggable SRE Runbook Registry.
+Supported primitives:
+- quarantine_messages   — isolate poison pills to DLQ (no data loss)
+- restart_service       — graceful container reboot (flushes memory/pool leaks)
+- rollback_config       — revert deployment to last known good version
+- scale_service         — adjust instance count (capped at ±5 per operation)
+- drain_traffic         — stop new requests, drain in-flight connections gracefully
+- flush_cache           — flush stale Redis/ElastiCache keys causing data inconsistency
+- trip_circuit_breaker  — shed load from degraded third-party downstream dependencies
+- reroute_traffic       — shift traffic away from an impaired AWS Availability Zone
 """
 from __future__ import annotations
 
 import json
 from strands import tool
 from strandops.simulator.cloud import cloud
+from strandops.plugins.registry import registry
+
+# Action alias mapping for natural SRE agent inputs
+_ACTION_ALIASES = {
+    "restart_container": "restart_service",
+    "reboot_instance": "restart_service",
+    "rollback_deployment": "rollback_config",
+    "scale_instances": "scale_service",
+    "scale_up": "scale_service",
+    "scale_down": "scale_service",
+    "drain_service": "drain_traffic",
+    "drain_connections": "drain_traffic",
+}
 
 
 @tool
 def execute_remediation(action_type: str, target: str, parameters_json: str = "{}") -> str:
     """Execute a self-healing remediation action on cloud infrastructure.
 
-    Only accepts bounded, typed remediation primitives to guarantee safety.
+    Dispatches typed actions through the Pluggable SRE Runbook Registry.
 
     Args:
         action_type: The type of remediation:
-                     - 'quarantine_messages' (moves poison pills to dead-letter queue)
-                     - 'restart_service' (gracefully reboots a container to clear memory leaks / hung pools)
-                     - 'rollback_config' (reverts service deployment/config to previous stable tag)
-                     - 'scale_service' (adds or removes instances, e.g. to handle SQS backlog spikes)
-                     - 'drain_traffic' (stops new requests and drains in-flight connections gracefully)
-        target: The target service or queue (e.g. 'order-processing-queue', 'payment-gateway', 'api-gateway').
-        parameters_json: Optional JSON string of parameters (e.g. '{"message_ids": ["msg-bad-881"]}' or '{"delta": 2}').
+                     - 'quarantine_messages' (moves poison pills to DLQ)
+                     - 'restart_service' (gracefully reboots container to clear memory/hung pools)
+                     - 'rollback_config' (reverts service deployment/config to stable tag)
+                     - 'scale_service' (adds/removes instances, parameters: {"delta": N})
+                     - 'drain_traffic' (drains active connections gracefully)
+                     - 'flush_cache' (flushes stale cache keys, parameters: {"key_pattern": "*"})
+                     - 'trip_circuit_breaker' (sheds traffic from failing API, parameters: {"shed_pct": 100})
+                     - 'reroute_traffic' (shifts traffic between AZs, parameters: {"from_az": "us-east-1a", "to_az": "us-east-1b"})
+        target: The target service, queue, or cache cluster (e.g. 'order-processing-queue', 'payment-gateway', 'redis-cluster').
+        parameters_json: Optional JSON string of parameters (e.g. '{"delta": 2}' or '{"key_pattern": "order:*"}').
     """
-    action = action_type.strip().lower()
+    raw_action = action_type.strip().lower()
+    canonical_action = _ACTION_ALIASES.get(raw_action, raw_action)
     tgt = target.strip().lower().replace(" ", "-").replace("_", "-")
 
     params = {}
@@ -45,56 +66,18 @@ def execute_remediation(action_type: str, target: str, parameters_json: str = "{
             except Exception:
                 params = {}
 
-    if action == "quarantine_messages":
-        message_ids = params.get("message_ids", [])
-        if not message_ids:
-            # Check if queue has known poison pill IDs
-            q = cloud.get_queue_state()
-            message_ids = q.poison_pill_ids
+    result = registry.execute(cloud=cloud, action_name=canonical_action, target=tgt, parameters=params)
 
-        result = cloud.quarantine_queue_messages(queue_name=tgt, message_ids=message_ids)
-        return json.dumps({
-            "action_executed": "quarantine_messages",
-            "target": tgt,
-            "result": result,
-        }, indent=2)
-
-    elif action in ("restart_service", "restart_container", "reboot_instance"):
-        result = cloud.restart_service_instance(service_name=tgt)
-        return json.dumps({
-            "action_executed": "restart_service",
-            "target": tgt,
-            "result": result,
-        }, indent=2)
-
-    elif action in ("rollback_config", "rollback_deployment"):
-        result = cloud.rollback_service_config(service_name=tgt)
-        return json.dumps({
-            "action_executed": "rollback_config",
-            "target": tgt,
-            "result": result,
-        }, indent=2)
-
-    elif action in ("scale_service", "scale_instances", "scale_up", "scale_down"):
-        delta = int(params.get("delta", 1))
-        result = cloud.scale_service_instances(service_name=tgt, delta=delta)
-        return json.dumps({
-            "action_executed": "scale_service",
-            "target": tgt,
-            "result": result,
-        }, indent=2)
-
-    elif action in ("drain_traffic", "drain_service", "drain_connections"):
-        result = cloud.drain_service_traffic(service_name=tgt)
-        return json.dumps({
-            "action_executed": "drain_traffic",
-            "target": tgt,
-            "result": result,
-        }, indent=2)
-
-    else:
+    if result.get("status") == "error" and "Unsupported action" in result.get("message", ""):
         return json.dumps({
             "status": "error",
             "message": f"Unsupported action '{action_type}'. Allowed: "
-                       "['quarantine_messages', 'restart_service', 'rollback_config', 'scale_service', 'drain_traffic']",
+                       "['quarantine_messages', 'restart_service', 'rollback_config', 'scale_service', "
+                       "'drain_traffic', 'flush_cache', 'trip_circuit_breaker', 'reroute_traffic']",
         })
+
+    return json.dumps({
+        "action_executed": canonical_action,
+        "target": tgt,
+        "result": result,
+    }, indent=2)

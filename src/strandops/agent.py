@@ -142,6 +142,61 @@ def _build_model():
             return None
 
 
+def _build_triage_model():
+    """Build fast Tier-1 model (Haiku / Nova) for low-cost log parsing and classification."""
+    provider = os.getenv("MODEL_PROVIDER", "bedrock").lower()
+    if provider == "bedrock":
+        try:
+            import boto3
+            from strands.models.bedrock import BedrockModel
+
+            model_id = os.getenv("BEDROCK_TRIAGE_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+            region = os.getenv("AWS_REGION", "us-east-1")
+            access_key = os.getenv("AWS_ACCESS_KEY_ID")
+            secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+            session_token = os.getenv("AWS_SESSION_TOKEN")
+
+            if access_key and secret_key:
+                session = boto3.Session(
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    aws_session_token=session_token,
+                    region_name=region,
+                )
+                return BedrockModel(boto_session=session, model_id=model_id)
+            else:
+                return BedrockModel(model_id=model_id, region_name=region)
+        except Exception:
+            return None
+    return None
+
+
+def fast_triage_incident(service_name: str, error_type: str = "", signature: str = "") -> dict:
+    """Tier-1 Hybrid Triage: Checks semantic incident cache first before LLM escalation.
+
+    If an identical failure pattern has been resolved and verified previously,
+    returns the verified remediation in < 10ms with $0 cost.
+    """
+    from strandops.cache import incident_cache
+
+    cached = incident_cache.lookup(service=service_name, error_type=error_type, signature=signature)
+    if cached:
+        return {
+            "tier": "Tier-0 (Semantic Cache Hit)",
+            "escalation_needed": False,
+            "cost_usd": 0.0,
+            "latency_ms": cached["lookup_latency_ms"],
+            "plan": cached["remediation_plan"],
+        }
+
+    return {
+        "tier": "Tier-1 (Fast Triage)",
+        "escalation_needed": True,
+        "escalate_to": "Tier-2 (Claude 3.5 Sonnet)",
+        "reason": "Novel incident signature not present in semantic cache.",
+    }
+
+
 def create_sre_agent():
     """Initializes and returns the configured StrandsOps SRE Agent."""
     from strands import Agent

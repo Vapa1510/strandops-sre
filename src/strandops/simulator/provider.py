@@ -90,6 +90,21 @@ class CloudProvider(ABC):
         """Drain active connections from a service and redirect to peers."""
         ...
 
+    @abstractmethod
+    def flush_cache(self, cache_cluster: str, key_pattern: str = "*") -> Dict[str, object]:
+        """Flush keys from a cache cluster (Redis/ElastiCache)."""
+        ...
+
+    @abstractmethod
+    def trip_circuit_breaker(self, service_name: str, shed_pct: int = 100) -> Dict[str, object]:
+        """Trip a circuit breaker to isolate degraded third-party backends."""
+        ...
+
+    @abstractmethod
+    def reroute_traffic(self, service_name: str, from_az: str, to_az: str) -> Dict[str, object]:
+        """Shift traffic away from an impaired Availability Zone."""
+        ...
+
     # ── Chaos Engineering (simulator-only, no-op on live) ────────────────
 
     def inject_chaos(self, scenario: ChaosScenario) -> IncidentRecord:
@@ -114,12 +129,9 @@ def get_cloud_provider() -> CloudProvider:
     backend = os.getenv("CLOUD_BACKEND", "simulator").lower()
 
     if backend == "aws":
-        # Future: from strandops.simulator.aws_provider import LiveAWSProvider
-        # return LiveAWSProvider()
-        raise NotImplementedError(
-            "Live AWS backend is on the roadmap. "
-            "Set CLOUD_BACKEND=simulator (default) for now."
-        )
+        from strandops.simulator.aws_provider import LiveAWSProvider
+        _provider_instance = LiveAWSProvider()
+        return _provider_instance
 
     # Default: canonical in-process simulator singleton
     from strandops.simulator.cloud import cloud

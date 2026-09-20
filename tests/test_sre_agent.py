@@ -362,3 +362,150 @@ def test_scale_and_drain_recorded_in_incident_audit():
     actions = inc.remediation_actions_taken
     assert any("Scaled" in a for a in actions)
     assert any("Drained" in a for a in actions)
+
+
+# =============================================================================
+# 6. Pluggable SRE Runbook Registry & New Action Primitive Tests
+# =============================================================================
+
+def test_action_registry_contains_all_plugins():
+    """Registry must have all 8 standard and extended plugins registered."""
+    from strandops.plugins.registry import registry
+    actions = registry.list_actions()
+    names = [a["name"] for a in actions]
+    expected = [
+        "quarantine_messages", "restart_service", "rollback_config",
+        "scale_service", "drain_traffic", "flush_cache",
+        "trip_circuit_breaker", "reroute_traffic",
+    ]
+    for exp in expected:
+        assert exp in names
+
+
+def test_flush_cache_primitive():
+    """flush_cache action should purge keys and record in incident audit."""
+    res_raw = execute_remediation("flush_cache", "redis-cluster", '{"key_pattern": "session:*"}')
+    res = json.loads(res_raw)
+    assert res["action_executed"] == "flush_cache"
+    assert res["result"]["status"] == "success"
+    assert res["result"]["cache_cluster"] == "redis-cluster"
+    assert res["result"]["key_pattern"] == "session:*"
+    assert res["result"]["keys_cleared"] > 0
+
+
+def test_trip_circuit_breaker_primitive():
+    """trip_circuit_breaker action should set OPEN state and shed traffic."""
+    res_raw = execute_remediation("trip_circuit_breaker", "payment-gateway", '{"shed_pct": 75}')
+    res = json.loads(res_raw)
+    assert res["action_executed"] == "trip_circuit_breaker"
+    assert res["result"]["status"] == "success"
+    assert res["result"]["circuit_breaker_state"] == "OPEN"
+    assert res["result"]["traffic_shed_pct"] == 75
+
+
+def test_reroute_traffic_primitive():
+    """reroute_traffic action should shift traffic between Availability Zones."""
+    res_raw = execute_remediation(
+        "reroute_traffic", "api-gateway", '{"from_az": "us-east-1a", "to_az": "us-east-1b"}'
+    )
+    res = json.loads(res_raw)
+    assert res["action_executed"] == "reroute_traffic"
+    assert res["result"]["status"] == "success"
+    assert res["result"]["from_az"] == "us-east-1a"
+    assert res["result"]["to_az"] == "us-east-1b"
+
+
+def test_safety_gate_evaluates_new_primitives():
+    """Safety gate should recognize flush_cache as LOW and reroute_traffic as HIGH risk."""
+    flush_gate = json.loads(analyze_blast_radius("flush_cache", "redis-cluster"))
+    assert flush_gate["risk_level"] == "LOW"
+    assert flush_gate["safe_to_proceed"] is True
+
+    reroute_gate = json.loads(analyze_blast_radius("reroute_traffic", "api-gateway"))
+    assert reroute_gate["risk_level"] == "HIGH"
+
+
+# =============================================================================
+# 7. Semantic Incident Cache & Fast Triage Tests
+# =============================================================================
+
+def test_semantic_cache_instant_hit():
+    """Known failure signature should yield sub-millisecond zero-cost cache hit."""
+    from strandops.cache import incident_cache
+    hit = incident_cache.lookup(
+        service="inventory-worker",
+        error_type="json.decoder.JSONDecodeError",
+        signature="Unterminated string starting at line",
+    )
+    assert hit is not None
+    assert hit["cache_hit"] is True
+    assert hit["estimated_cost_usd"] == 0.0
+    assert hit["remediation_plan"]["action_type"] == "quarantine_messages"
+
+
+def test_semantic_cache_miss_escalates():
+    """Unknown failure signature should register as a cache miss."""
+    from strandops.cache import incident_cache
+    miss = incident_cache.lookup(
+        service="unknown-service",
+        error_type="CustomNovelError",
+        signature="Something totally unheard of",
+    )
+    assert miss is None
+
+
+def test_fast_triage_incident_routing():
+    """fast_triage_incident routes known incidents to Tier-0 cache and novel ones to Tier-2."""
+    from strandops.agent import fast_triage_incident
+    # Known pattern
+    triage_hit = fast_triage_incident(
+        service_name="payment-gateway",
+        error_type="ConnectionPoolTimeout",
+        signature="Connection pool is full, discarding connection",
+    )
+    assert triage_hit["tier"] == "Tier-0 (Semantic Cache Hit)"
+    assert triage_hit["escalation_needed"] is False
+    assert triage_hit["plan"]["action_type"] == "restart_service"
+
+    # Novel pattern
+    triage_miss = fast_triage_incident(
+        service_name="payment-gateway",
+        error_type="UnexpectedVendorKafkaDrop",
+        signature="Fatal protocol handshake mismatch",
+    )
+    assert triage_miss["tier"] == "Tier-1 (Fast Triage)"
+    assert triage_miss["escalation_needed"] is True
+    assert triage_miss["escalate_to"] == "Tier-2 (Claude 3.5 Sonnet)"
+
+
+# =============================================================================
+# 8. Time-Windowed Soak Testing & Mathematical Stability Tests
+# =============================================================================
+
+def test_soak_window_verification_with_window_parameter():
+    """verify_system_recovery supports soak_window_seconds and reports stability metrics."""
+    raw = verify_system_recovery(soak_checks=2, soak_window_seconds=1)
+    data = json.loads(raw)
+    assert data["all_recovered"] is True
+    assert data["stability"] == "STABLE"
+    assert data["memory_slope_stable"] is True
+    assert data["verification_checkpoints"] == 2
+
+
+# =============================================================================
+# 9. Live AWS Provider Adapter Tests
+# =============================================================================
+
+def test_live_aws_provider_structure():
+    """LiveAWSProvider should implement all CloudProvider abstract methods."""
+    from strandops.simulator.aws_provider import LiveAWSProvider
+    from strandops.simulator.provider import CloudProvider
+
+    aws_provider = LiveAWSProvider(region_name="us-east-1")
+    assert isinstance(aws_provider, CloudProvider)
+    assert aws_provider.region == "us-east-1"
+    telemetry = aws_provider.get_telemetry("payment-gateway")
+    assert len(telemetry) == 1
+    assert telemetry[0].service_name == "payment-gateway"
+    assert telemetry[0].p99_latency_ms > 0
+

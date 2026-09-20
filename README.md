@@ -95,7 +95,7 @@ StrandsOps is built on four core engineering principles:
 * **Agent Boundaries:** Giving an agent fewer, well-typed tools makes it 10x more reliable than giving it broad, ambiguous tools.
 
 ### 4. The Execution
-* **30/30 Automated Tests Passing:** Unit and integration tests cover every tool, failure mode, recovery cycle, scaling guardrails, naming normalization, and soak-window verification.
+* **40/40 Automated Tests Passing:** Unit and integration tests cover every tool, failure mode, recovery cycle, Pluggable Action Registry plugins, semantic caching, live AWS adapter structure, and mathematical soak-window verification.
 * **One-Click Reproducible Demos:** One click in the UI simulates a real outage, and the agent fixes it live in under 30 seconds.
 
 ---
@@ -164,22 +164,28 @@ strandops-sre/
 ├── DEMO.md                      # Step-by-step video script
 ├── src/strandops/
 │   ├── __init__.py
-│   ├── agent.py                 # Strands SRE Coordinator Agent
+│   ├── agent.py                 # Strands SRE Coordinator Agent (Two-Tier Architecture)
+│   ├── cache.py                 # Semantic Incident Cache (< 10ms repeat resolution)
 │   ├── cli.py                   # Rich terminal SRE console
 │   ├── web.py                   # Streamlit Incident Command Center Dashboard
+│   ├── plugins/                 # Pluggable SRE Runbook Registry
+│   │   ├── base.py              # RemediationPlugin abstract base class
+│   │   ├── actions.py           # Typed plugins (scale, flush, trip, reroute, etc.)
+│   │   └── registry.py          # ActionRegistry singleton
 │   ├── simulator/
 │   │   ├── models.py            # Microservice, Queue, Log, and Incident models
 │   │   ├── provider.py          # Abstract CloudProvider interface (Strategy Pattern)
+│   │   ├── aws_provider.py      # Live AWS Adapter (boto3 CloudWatch, ECS, SQS)
 │   │   └── cloud.py             # In-process cloud simulation & Chaos Engine
 │   └── tools/
 │       ├── telemetry.py         # inspect_telemetry tool
 │       ├── diagnostics.py       # fetch_error_logs & inspect_queue_health tools
 │       ├── safety.py            # analyze_blast_radius tool
-│       ├── remediation.py       # execute_remediation tool (quarantine, restart, rollback, scale, drain)
+│       ├── remediation.py       # execute_remediation tool (dispatches via ActionRegistry)
 │       ├── verification.py      # verify_system_recovery tool (soak-window verification)
 │       └── postmortem.py        # generate_incident_postmortem tool
 └── tests/
-    └── test_sre_agent.py        # 30 automated tests (100% passing)
+    └── test_sre_agent.py        # 40 automated tests (100% passing)
 ```
 
 ---

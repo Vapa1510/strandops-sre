@@ -78,6 +78,20 @@ def analyze_blast_radius(proposed_action: str, target_service: str) -> str:
         rationale.append(f"Scaling {target} adjusts instance count without interrupting active traffic.")
         rationale.append("Instance count is clamped to [1, 10] with a maximum delta of ±5 per operation.")
 
+    elif "flush" in action or "cache" in action:
+        risk_level = "LOW"
+        rationale.append(f"Flushing cache on {target} purges stale keys without dropping database connections.")
+
+    elif "circuit" in action or "breaker" in action:
+        risk_level = "MEDIUM"
+        rationale.append(f"Tripping circuit breaker on {target} sheds load from failing third-party dependency.")
+        rationale.append("Preserves core checkout loop while downstream API recovers.")
+
+    elif "reroute" in action or "shift" in action:
+        risk_level = "HIGH"
+        rationale.append(f"Rerouting traffic from AZ on {target} shifts ingress across availability zones.")
+        rationale.append("Verify destination AZ has sufficient warm capacity before proceeding.")
+
     else:
         # Unknown action — default to HIGH risk and block
         risk_level = "HIGH"
